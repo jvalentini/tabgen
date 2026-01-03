@@ -1,0 +1,13 @@
+# Binaries
+tabgen
+*.exe
+
+# Test binary
+*.test
+
+# Go build cache
+*.out
+
+# IDE
+.idea/
+.vscode/
