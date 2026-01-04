@@ -105,7 +105,7 @@ func removeTimer(home string) {
 
 	// Filter out our cron line
 	var newLines []string
-	for _, line := range strings.Split(currentCron, "\n") {
+	for line := range strings.SplitSeq(currentCron, "\n") {
 		if !strings.Contains(line, "# tabgen daily scan") {
 			newLines = append(newLines, line)
 		}
