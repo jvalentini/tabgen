@@ -14,13 +14,21 @@ type VersionInfo struct {
 	DetectedAt time.Time
 }
 
-// DetectVersion attempts to get version info from a tool
+// DetectVersion attempts to get version info from a tool using default settings
+// Deprecated: Use Parser.detectVersion() for configurable version detection
 func DetectVersion(path string) string {
-	// Try common version flags in order of preference
-	flags := []string{"--version", "-V", "version", "-v"}
+	return detectVersionWithConfig(path, DefaultConfig())
+}
 
-	for _, flag := range flags {
-		version := tryVersionFlag(path, flag)
+// detectVersion attempts to get version info from a tool using parser config
+func (p *Parser) detectVersion(path string) string {
+	return detectVersionWithConfig(path, p.config)
+}
+
+// detectVersionWithConfig attempts to get version info using provided config
+func detectVersionWithConfig(path string, cfg ParserConfig) string {
+	for _, flag := range cfg.VersionCmds {
+		version := tryVersionFlagWithTimeout(path, flag, cfg.HelpTimeout)
 		if version != "" {
 			return version
 		}
@@ -29,9 +37,9 @@ func DetectVersion(path string) string {
 	return ""
 }
 
-// tryVersionFlag runs the tool with a version flag and extracts the version
-func tryVersionFlag(path, flag string) string {
-	ctx, cancel := ctxWithTimeout(2 * time.Second)
+// tryVersionFlagWithTimeout runs the tool with a version flag and extracts the version
+func tryVersionFlagWithTimeout(path, flag string, timeout time.Duration) string {
+	ctx, cancel := ctxWithTimeout(timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, path, flag)
@@ -41,6 +49,12 @@ func tryVersionFlag(path, flag string) string {
 	}
 
 	return extractVersion(string(output))
+}
+
+// tryVersionFlag runs the tool with a version flag using default timeout
+// Deprecated: Use tryVersionFlagWithTimeout for configurable timeout
+func tryVersionFlag(path, flag string) string {
+	return tryVersionFlagWithTimeout(path, flag, 2*time.Second)
 }
 
 // ctxWithTimeout creates a context with timeout

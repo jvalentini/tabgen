@@ -13,15 +13,54 @@ import (
 	"github.com/jvalentini/tabgen/internal/types"
 )
 
-// HelpTimeout is the maximum time to wait for help command execution
-const HelpTimeout = 5 * time.Second
+// ParserConfig holds parser configuration options
+type ParserConfig struct {
+	// MaxDepth limits how deep we recurse into subcommands (default: 2)
+	MaxDepth int
+	// HelpTimeout is the timeout for running help/version commands (default: 5s)
+	HelpTimeout time.Duration
+	// VersionCmds are the flags to try when detecting version (default: --version, -V, version, -v)
+	VersionCmds []string
+}
+
+// DefaultConfig returns a ParserConfig with sensible defaults
+func DefaultConfig() ParserConfig {
+	return ParserConfig{
+		MaxDepth:    2,
+		HelpTimeout: 5 * time.Second,
+		VersionCmds: []string{"--version", "-V", "version", "-v"},
+	}
+}
 
 // Parser extracts command structure from --help and man pages
-type Parser struct{}
+type Parser struct {
+	config ParserConfig
+}
 
-// New creates a new Parser
-func New() *Parser {
-	return &Parser{}
+// New creates a new Parser with optional config. If no config provided, uses defaults.
+func New(cfg ...ParserConfig) *Parser {
+	var parserConfig ParserConfig
+	if len(cfg) > 0 {
+		parserConfig = cfg[0]
+	} else {
+		parserConfig = DefaultConfig()
+	}
+	// Apply defaults for zero values
+	if parserConfig.MaxDepth == 0 {
+		parserConfig.MaxDepth = 2
+	}
+	if parserConfig.HelpTimeout == 0 {
+		parserConfig.HelpTimeout = 5 * time.Second
+	}
+	if len(parserConfig.VersionCmds) == 0 {
+		parserConfig.VersionCmds = []string{"--version", "-V", "version", "-v"}
+	}
+	return &Parser{config: parserConfig}
+}
+
+// Config returns the parser's current configuration
+func (p *Parser) Config() ParserConfig {
+	return p.config
 }
 
 // UniqueSet provides O(1) duplicate detection for any slice type
@@ -61,7 +100,8 @@ func newCommandSet(commands *[]types.Command) *UniqueSet[types.Command] {
 	return NewUniqueSet(commands, func(c types.Command) string { return c.Name })
 }
 
-// MaxSubcommandDepth limits how deep we recurse into subcommands
+// MaxSubcommandDepth is kept for backward compatibility
+// Deprecated: Use Config().MaxDepth instead
 const MaxSubcommandDepth = 2
 
 // Parse extracts command structure from a tool
@@ -101,7 +141,7 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 	}
 
 	// Detect version
-	tool.Version = DetectVersion(path)
+	tool.Version = p.detectVersion(path)
 	if tool.Version != "" {
 		config.Logf("Detected version: %s", tool.Version)
 	} else {
@@ -181,7 +221,7 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 
 // parseNestedSubcommands recursively parses subcommand help
 func (p *Parser) parseNestedSubcommands(basePath string, commands []types.Command, depth int) {
-	if depth >= MaxSubcommandDepth {
+	if depth >= p.config.MaxDepth {
 		return
 	}
 
@@ -207,7 +247,7 @@ func (p *Parser) parseNestedSubcommands(basePath string, commands []types.Comman
 
 // runSubcommandHelp runs "tool subcommand --help"
 func (p *Parser) runSubcommandHelp(basePath, subcommand string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), p.config.HelpTimeout)
 	defer cancel()
 
 	// Split base path in case it contains spaces (nested commands)
@@ -285,7 +325,7 @@ func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
 
 // runHelp executes tool --help and captures output
 func (p *Parser) runHelp(path string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), p.config.HelpTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, path, "--help")
@@ -304,7 +344,7 @@ func (p *Parser) runHelp(path string) (string, error) {
 
 // getManPage retrieves the man page content
 func (p *Parser) getManPage(name string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), p.config.HelpTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "man", name)
