@@ -26,6 +26,24 @@ func main() {
 	case "list":
 		showAll := len(os.Args) > 2 && os.Args[2] == "--all"
 		err = cmd.List(showAll)
+	case "install":
+		skipTimer := len(os.Args) > 2 && os.Args[2] == "--skip-timer"
+		err = cmd.Install(skipTimer)
+	case "uninstall":
+		keepData := len(os.Args) > 2 && os.Args[2] == "--keep-data"
+		err = cmd.Uninstall(keepData)
+	case "status":
+		err = cmd.Status()
+	case "exclude":
+		action := ""
+		pattern := ""
+		if len(os.Args) > 2 {
+			action = os.Args[2]
+		}
+		if len(os.Args) > 3 {
+			pattern = os.Args[3]
+		}
+		err = cmd.Exclude(action, pattern)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -45,8 +63,12 @@ func printUsage() {
 	fmt.Println("Usage: tabgen <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  scan              Scan $PATH for executable tools")
-	fmt.Println("  generate [tool]   Generate completions (all tools if none specified)")
-	fmt.Println("  list [--all]      List discovered tools (parseable only by default)")
-	fmt.Println("  help              Show this help message")
+	fmt.Println("  scan                    Scan $PATH for executable tools")
+	fmt.Println("  generate [tool]         Generate completions (all tools if none specified)")
+	fmt.Println("  list [--all]            List discovered tools")
+	fmt.Println("  install [--skip-timer]  Set up symlinks, timer, and shell hooks")
+	fmt.Println("  uninstall [--keep-data] Remove TabGen installation")
+	fmt.Println("  status                  Show installation status")
+	fmt.Println("  exclude <action>        Manage exclusion list (list/add/remove/clear)")
+	fmt.Println("  help                    Show this help message")
 }

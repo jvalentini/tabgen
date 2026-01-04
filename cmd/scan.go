@@ -15,13 +15,19 @@ func Scan() error {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
+	// Load config for exclusions
+	cfg, _ := storage.LoadConfig()
+
 	// Load existing catalog to preserve generated status
 	existingCatalog, _ := storage.LoadCatalog()
 
 	fmt.Println("Scanning $PATH for executables...")
+	if len(cfg.Excluded) > 0 {
+		fmt.Printf("  (excluding %d patterns)\n", len(cfg.Excluded))
+	}
 	start := time.Now()
 
-	s := scanner.New(nil) // No exclusions for now
+	s := scanner.New(cfg.Excluded)
 	catalog, err := s.Scan()
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)

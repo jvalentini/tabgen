@@ -12,17 +12,13 @@ import (
 
 // Scanner discovers executables in $PATH
 type Scanner struct {
-	excluded  map[string]bool
-	quickMode bool // Skip --help and man checks during scan
+	excludePatterns []string
+	quickMode       bool // Skip --help and man checks during scan
 }
 
 // New creates a new Scanner (quick mode by default)
 func New(excluded []string) *Scanner {
-	ex := make(map[string]bool)
-	for _, name := range excluded {
-		ex[name] = true
-	}
-	return &Scanner{excluded: ex, quickMode: true}
+	return &Scanner{excludePatterns: excluded, quickMode: true}
 }
 
 // NewFull creates a Scanner that checks --help and man pages (slower)
@@ -30,6 +26,21 @@ func NewFull(excluded []string) *Scanner {
 	s := New(excluded)
 	s.quickMode = false
 	return s
+}
+
+// isExcluded checks if a name matches any exclusion pattern
+func (s *Scanner) isExcluded(name string) bool {
+	for _, pattern := range s.excludePatterns {
+		// Try glob match first
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+		// Also try exact match
+		if pattern == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Scan walks $PATH and returns a catalog of discovered tools
@@ -71,7 +82,7 @@ func (s *Scanner) Scan() (*types.Catalog, error) {
 			seen[name] = true
 
 			// Skip excluded tools
-			if s.excluded[name] {
+			if s.isExcluded(name) {
 				continue
 			}
 
