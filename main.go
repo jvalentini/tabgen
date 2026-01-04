@@ -18,11 +18,15 @@ func main() {
 	case "scan":
 		err = cmd.Scan()
 	case "generate":
-		tool := ""
-		if len(os.Args) > 2 {
-			tool = os.Args[2]
+		opts := cmd.GenerateOptions{}
+		for _, arg := range os.Args[2:] {
+			if arg == "--force" || arg == "-f" {
+				opts.Force = true
+			} else if len(arg) > 0 && arg[0] != '-' {
+				opts.Tool = arg
+			}
 		}
-		err = cmd.Generate(tool)
+		err = cmd.Generate(opts)
 	case "list":
 		showAll := len(os.Args) > 2 && os.Args[2] == "--all"
 		err = cmd.List(showAll)
@@ -64,7 +68,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  scan                    Scan $PATH for executable tools")
-	fmt.Println("  generate [tool]         Generate completions (all tools if none specified)")
+	fmt.Println("  generate [tool] [-f]    Generate completions (-f to force regeneration)")
 	fmt.Println("  list [--all]            List discovered tools")
 	fmt.Println("  install [--skip-timer]  Set up symlinks, timer, and shell hooks")
 	fmt.Println("  uninstall [--keep-data] Remove TabGen installation")

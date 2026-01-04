@@ -16,6 +16,9 @@ func New() *Parser {
 	return &Parser{}
 }
 
+// MaxSubcommandDepth limits how deep we recurse into subcommands
+const MaxSubcommandDepth = 2
+
 // Parse extracts command structure from a tool
 func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 	tool := &types.Tool{
@@ -23,6 +26,9 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 		Path:     path,
 		ParsedAt: time.Now(),
 	}
+
+	// Detect version
+	tool.Version = DetectVersion(path)
 
 	// Try --help first
 	helpOutput, _ := p.runHelp(path)
@@ -49,7 +55,126 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 		tool.Source = "none"
 	}
 
+	// Parse nested subcommands (depth-limited)
+	p.parseNestedSubcommands(path, tool.Subcommands, 1)
+
 	return tool, nil
+}
+
+// parseNestedSubcommands recursively parses subcommand help
+func (p *Parser) parseNestedSubcommands(basePath string, commands []types.Command, depth int) {
+	if depth >= MaxSubcommandDepth {
+		return
+	}
+
+	for i := range commands {
+		cmd := &commands[i]
+
+		// Try to get help for this subcommand
+		output := p.runSubcommandHelp(basePath, cmd.Name)
+		if output == "" {
+			continue
+		}
+
+		// Parse flags and nested subcommands from output
+		p.parseSubcommandOutput(cmd, output)
+
+		// Recurse into nested subcommands
+		if len(cmd.Subcommands) > 0 {
+			// For nested commands, we need to pass the full command path
+			p.parseNestedSubcommands(basePath+" "+cmd.Name, cmd.Subcommands, depth+1)
+		}
+	}
+}
+
+// runSubcommandHelp runs "tool subcommand --help"
+func (p *Parser) runSubcommandHelp(basePath, subcommand string) string {
+	// Split base path in case it contains spaces (nested commands)
+	parts := strings.Fields(basePath)
+	args := append(parts[1:], subcommand, "--help")
+
+	cmd := exec.Command(parts[0], args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil && len(output) == 0 {
+		// Try without --help (some tools use "help subcommand")
+		args = append(parts[1:], "help", subcommand)
+		cmd = exec.Command(parts[0], args...)
+		output, _ = cmd.CombinedOutput()
+	}
+	return string(output)
+}
+
+// parseSubcommandOutput extracts flags and nested subcommands from help output
+func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
+	lines := strings.Split(output, "\n")
+
+	inCommands := false
+	inOptions := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+
+		// Detect section headers
+		if strings.HasPrefix(lower, "commands:") ||
+			strings.HasPrefix(lower, "available commands:") ||
+			strings.HasPrefix(lower, "subcommands:") {
+			inCommands = true
+			inOptions = false
+			continue
+		}
+
+		if strings.HasPrefix(lower, "options:") ||
+			strings.HasPrefix(lower, "flags:") {
+			inCommands = false
+			inOptions = true
+			continue
+		}
+
+		if trimmed == "" {
+			continue
+		}
+
+		// Parse nested subcommands
+		if inCommands {
+			if subcmd := p.parseCommandLine(line); subcmd != nil {
+				cmd.Subcommands = append(cmd.Subcommands, *subcmd)
+			}
+		}
+
+		// Parse flags
+		if inOptions || strings.HasPrefix(trimmed, "-") {
+			if flag := p.parseFlagLine(line); flag != nil {
+				// Avoid duplicates
+				exists := false
+				for _, f := range cmd.Flags {
+					if f.Name == flag.Name {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					cmd.Flags = append(cmd.Flags, *flag)
+				}
+			}
+		}
+
+		// Look for indented commands (git-style)
+		if !inCommands && !inOptions && len(line) > 3 && (line[0] == ' ' || line[0] == '\t') {
+			if subcmd := p.parseIndentedCommand(line); subcmd != nil {
+				exists := false
+				for _, c := range cmd.Subcommands {
+					if c.Name == subcmd.Name {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					cmd.Subcommands = append(cmd.Subcommands, *subcmd)
+				}
+			}
+		}
+	}
 }
 
 // runHelp executes tool --help and captures output

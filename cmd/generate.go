@@ -8,8 +8,14 @@ import (
 	"github.com/justin/tabgen/internal/parser"
 )
 
+// GenerateOptions configures the generate command
+type GenerateOptions struct {
+	Tool  string // Specific tool to generate (empty = all)
+	Force bool   // Force regeneration even if up-to-date
+}
+
 // Generate creates completion scripts for one or all tools
-func Generate(toolName string) error {
+func Generate(opts GenerateOptions) error {
 	storage, err := config.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
@@ -31,11 +37,11 @@ func Generate(toolName string) error {
 
 	// Determine which tools to generate
 	var tools []string
-	if toolName != "" {
-		if _, ok := catalog.Tools[toolName]; !ok {
-			return fmt.Errorf("tool %q not found in catalog. Run 'tabgen scan' first.", toolName)
+	if opts.Tool != "" {
+		if _, ok := catalog.Tools[opts.Tool]; !ok {
+			return fmt.Errorf("tool %q not found in catalog. Run 'tabgen scan' first.", opts.Tool)
 		}
-		tools = []string{toolName}
+		tools = []string{opts.Tool}
 	} else {
 		// Generate for all tools (parser will skip unparseable ones)
 		for name := range catalog.Tools {
@@ -48,15 +54,16 @@ func Generate(toolName string) error {
 		return nil
 	}
 
-	fmt.Printf("Generating completions for %d tools...\n", len(tools))
+	fmt.Printf("Processing %d tools...\n", len(tools))
 
 	succeeded := 0
+	skipped := 0
 	failed := 0
 
 	for _, name := range tools {
 		entry := catalog.Tools[name]
 
-		// Parse the tool
+		// Parse the tool (also detects version)
 		tool, err := p.Parse(name, entry.Path)
 		if err != nil {
 			fmt.Printf("  ✗ %s: %v\n", name, err)
@@ -67,6 +74,16 @@ func Generate(toolName string) error {
 		// Skip tools we couldn't parse
 		if tool.Source == "none" {
 			continue
+		}
+
+		// Check if we can skip (already generated with same version)
+		if !opts.Force && entry.Generated && entry.GeneratedVersion != "" {
+			if entry.GeneratedVersion == tool.Version {
+				skipped++
+				continue
+			}
+			// Version changed, will regenerate
+			fmt.Printf("  ↻ %s: version changed (%s → %s)\n", name, entry.GeneratedVersion, tool.Version)
 		}
 
 		// Save parsed tool data
@@ -92,11 +109,17 @@ func Generate(toolName string) error {
 			continue
 		}
 
-		// Update catalog
+		// Update catalog with version info
 		entry.Generated = true
+		entry.Version = tool.Version
+		entry.GeneratedVersion = tool.Version
 		catalog.Tools[name] = entry
 
-		fmt.Printf("  ✓ %s\n", name)
+		if tool.Version != "" {
+			fmt.Printf("  ✓ %s (v%s)\n", name, tool.Version)
+		} else {
+			fmt.Printf("  ✓ %s\n", name)
+		}
 		succeeded++
 	}
 
@@ -105,16 +128,13 @@ func Generate(toolName string) error {
 		return fmt.Errorf("failed to save catalog: %w", err)
 	}
 
-	fmt.Printf("\nDone: %d succeeded, %d failed\n", succeeded, failed)
+	fmt.Printf("\nDone: %d generated, %d skipped (up-to-date), %d failed\n", succeeded, skipped, failed)
 
 	if succeeded > 0 {
 		bashDir, zshDir := storage.CompletionPaths()
 		fmt.Printf("\nCompletions saved to:\n")
 		fmt.Printf("  Bash: %s\n", bashDir)
 		fmt.Printf("  Zsh:  %s\n", zshDir)
-		fmt.Printf("\nTo use, add to your shell config:\n")
-		fmt.Printf("  Bash: source %s/<tool>\n", bashDir)
-		fmt.Printf("  Zsh:  fpath=(%s $fpath); autoload -Uz compinit && compinit\n", zshDir)
 	}
 
 	return nil

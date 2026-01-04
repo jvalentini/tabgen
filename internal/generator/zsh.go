@@ -49,12 +49,10 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 		sb.WriteString("        commands)\n")
 		sb.WriteString("            local commands=(\n")
 		for _, cmd := range tool.Subcommands {
-			desc := cmd.Description
+			desc := escapeZshDesc(cmd.Description)
 			if desc == "" {
 				desc = cmd.Name
 			}
-			// Escape quotes in description
-			desc = strings.ReplaceAll(desc, "'", "'\\''")
 			sb.WriteString(fmt.Sprintf("                '%s:%s'\n", cmd.Name, desc))
 		}
 		sb.WriteString("            )\n")
@@ -64,18 +62,7 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 		sb.WriteString("        args)\n")
 		sb.WriteString("            case $words[1] in\n")
 		for _, cmd := range tool.Subcommands {
-			if len(cmd.Flags) > 0 {
-				sb.WriteString(fmt.Sprintf("                %s)\n", cmd.Name))
-				sb.WriteString("                    _arguments \\\n")
-				for _, flag := range cmd.Flags {
-					spec := z.formatFlagSpec(flag)
-					if spec != "" {
-						sb.WriteString(fmt.Sprintf("                        %s \\\n", spec))
-					}
-				}
-				sb.WriteString("                        '*:file:_files'\n")
-				sb.WriteString("                    ;;\n")
-			}
+			z.generateZshSubcommandCase(&sb, cmd)
 		}
 		sb.WriteString("                *)\n")
 		sb.WriteString("                    _files\n")
@@ -93,6 +80,67 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 	sb.WriteString(fmt.Sprintf("%s \"$@\"\n", funcName))
 
 	return sb.String()
+}
+
+// generateZshSubcommandCase generates a case entry for a subcommand
+func (z *Zsh) generateZshSubcommandCase(sb *strings.Builder, cmd types.Command) {
+	// Skip if no flags and no nested subcommands
+	if len(cmd.Flags) == 0 && len(cmd.Subcommands) == 0 {
+		return
+	}
+
+	sb.WriteString(fmt.Sprintf("                %s)\n", cmd.Name))
+
+	if len(cmd.Subcommands) > 0 {
+		// Has nested subcommands
+		sb.WriteString("                    case $words[2] in\n")
+		for _, sub := range cmd.Subcommands {
+			if len(sub.Flags) > 0 {
+				sb.WriteString(fmt.Sprintf("                        %s)\n", sub.Name))
+				sb.WriteString("                            _arguments \\\n")
+				for _, flag := range sub.Flags {
+					spec := z.formatFlagSpec(flag)
+					if spec != "" {
+						sb.WriteString(fmt.Sprintf("                                %s \\\n", spec))
+					}
+				}
+				sb.WriteString("                                '*:file:_files'\n")
+				sb.WriteString("                            ;;\n")
+			}
+		}
+		sb.WriteString("                        *)\n")
+		// Complete nested subcommands
+		sb.WriteString("                            local subcommands=(\n")
+		for _, sub := range cmd.Subcommands {
+			desc := escapeZshDesc(sub.Description)
+			if desc == "" {
+				desc = sub.Name
+			}
+			sb.WriteString(fmt.Sprintf("                                '%s:%s'\n", sub.Name, desc))
+		}
+		sb.WriteString("                            )\n")
+		sb.WriteString("                            _describe 'subcommand' subcommands\n")
+		sb.WriteString("                            ;;\n")
+		sb.WriteString("                    esac\n")
+	} else {
+		// Just flags
+		sb.WriteString("                    _arguments \\\n")
+		for _, flag := range cmd.Flags {
+			spec := z.formatFlagSpec(flag)
+			if spec != "" {
+				sb.WriteString(fmt.Sprintf("                        %s \\\n", spec))
+			}
+		}
+		sb.WriteString("                        '*:file:_files'\n")
+	}
+	sb.WriteString("                    ;;\n")
+}
+
+// escapeZshDesc escapes special characters in descriptions
+func escapeZshDesc(desc string) string {
+	desc = strings.ReplaceAll(desc, "'", "'\\''")
+	desc = strings.ReplaceAll(desc, ":", "\\:")
+	return desc
 }
 
 // formatFlagSpec creates a zsh _arguments spec for a flag

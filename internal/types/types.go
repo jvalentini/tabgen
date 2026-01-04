@@ -32,12 +32,14 @@ type Tool struct {
 
 // CatalogEntry represents a discovered tool in the catalog
 type CatalogEntry struct {
-	Name       string    `json:"name"`                  // Binary name
-	Path       string    `json:"path"`                  // Full path to binary
-	Generated  bool      `json:"generated"`             // Whether completions have been generated
-	LastScan   time.Time `json:"last_scan"`             // When this tool was last scanned
-	HasHelp    bool      `json:"has_help,omitempty"`    // Whether --help works
-	HasManPage bool      `json:"has_man_page,omitempty"` // Whether man page exists
+	Name             string    `json:"name"`                        // Binary name
+	Path             string    `json:"path"`                        // Full path to binary
+	Version          string    `json:"version,omitempty"`           // Current detected version
+	GeneratedVersion string    `json:"generated_version,omitempty"` // Version when completions were generated
+	Generated        bool      `json:"generated"`                   // Whether completions have been generated
+	LastScan         time.Time `json:"last_scan"`                   // When this tool was last scanned
+	HasHelp          bool      `json:"has_help,omitempty"`          // Whether --help works
+	HasManPage       bool      `json:"has_man_page,omitempty"`      // Whether man page exists
 }
 
 // Catalog is the full list of discovered tools
