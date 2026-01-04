@@ -7,6 +7,69 @@ import (
 	"github.com/jvalentini/tabgen/internal/types"
 )
 
+func TestNewZsh(t *testing.T) {
+	z := NewZsh()
+	if z == nil {
+		t.Error("NewZsh() returned nil")
+	}
+}
+
+func TestZsh_Generate_SimpleTool_NoSubcommands(t *testing.T) {
+	z := NewZsh()
+	tool := &types.Tool{Name: "simpletool"}
+
+	output := z.Generate(tool)
+
+	// Should have compdef header
+	if !strings.Contains(output, "#compdef simpletool") {
+		t.Error("missing #compdef header")
+	}
+
+	// No subcommands, should fall back to file completion
+	if !strings.Contains(output, "'*:file:_files'") {
+		t.Error("expected file completion fallback")
+	}
+}
+
+func TestEscapeZshDesc(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"simple", "simple"},
+		{"with'quote", "with'\\''quote"},
+		{"with:colon", "with\\:colon"},
+		{"both'and:here", "both'\\''and\\:here"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := escapeZshDesc(tt.input)
+			if got != tt.want {
+				t.Errorf("escapeZshDesc(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestZsh_Generate_SubcommandEmptyDescription(t *testing.T) {
+	z := NewZsh()
+	tool := &types.Tool{
+		Name: "mytool",
+		Subcommands: []types.Command{
+			{Name: "cmd", Description: ""},
+		},
+	}
+
+	output := z.Generate(tool)
+
+	// Empty description should fallback to command name
+	if !strings.Contains(output, "'cmd:cmd'") {
+		t.Error("empty description should fallback to command name")
+	}
+}
+
 func TestZsh_Generate_Basic(t *testing.T) {
 	z := NewZsh()
 	tool := &types.Tool{
