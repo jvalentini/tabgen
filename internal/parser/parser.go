@@ -23,6 +23,52 @@ func New() *Parser {
 	return &Parser{}
 }
 
+// flagSet provides O(n) duplicate detection for flags using a map
+type flagSet struct {
+	seen  map[string]bool
+	flags *[]types.Flag
+}
+
+// newFlagSet creates a flagSet wrapping an existing slice
+func newFlagSet(flags *[]types.Flag) *flagSet {
+	seen := make(map[string]bool, len(*flags))
+	for _, f := range *flags {
+		seen[f.Name] = true
+	}
+	return &flagSet{seen: seen, flags: flags}
+}
+
+// add appends flag if not already present (O(1) lookup)
+func (fs *flagSet) add(flag types.Flag) {
+	if !fs.seen[flag.Name] {
+		fs.seen[flag.Name] = true
+		*fs.flags = append(*fs.flags, flag)
+	}
+}
+
+// commandSet provides O(n) duplicate detection for commands using a map
+type commandSet struct {
+	seen     map[string]bool
+	commands *[]types.Command
+}
+
+// newCommandSet creates a commandSet wrapping an existing slice
+func newCommandSet(commands *[]types.Command) *commandSet {
+	seen := make(map[string]bool, len(*commands))
+	for _, c := range *commands {
+		seen[c.Name] = true
+	}
+	return &commandSet{seen: seen, commands: commands}
+}
+
+// add appends command if not already present (O(1) lookup)
+func (cs *commandSet) add(cmd types.Command) {
+	if !cs.seen[cmd.Name] {
+		cs.seen[cmd.Name] = true
+		*cs.commands = append(*cs.commands, cmd)
+	}
+}
+
 // MaxSubcommandDepth limits how deep we recurse into subcommands
 const MaxSubcommandDepth = 2
 
@@ -133,6 +179,10 @@ func (p *Parser) runSubcommandHelp(basePath, subcommand string) string {
 func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
 	lines := strings.Split(output, "\n")
 
+	// Use sets for O(1) duplicate detection
+	flagSet := newFlagSet(&cmd.Flags)
+	cmdSet := newCommandSet(&cmd.Subcommands)
+
 	inCommands := false
 	inOptions := false
 
@@ -163,40 +213,21 @@ func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
 		// Parse nested subcommands
 		if inCommands {
 			if subcmd := p.parseCommandLine(line); subcmd != nil {
-				cmd.Subcommands = append(cmd.Subcommands, *subcmd)
+				cmdSet.add(*subcmd)
 			}
 		}
 
 		// Parse flags
 		if inOptions || strings.HasPrefix(trimmed, "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
-				// Avoid duplicates
-				exists := false
-				for _, f := range cmd.Flags {
-					if f.Name == flag.Name {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					cmd.Flags = append(cmd.Flags, *flag)
-				}
+				flagSet.add(*flag)
 			}
 		}
 
 		// Look for indented commands (git-style)
 		if !inCommands && !inOptions && len(line) > 3 && (line[0] == ' ' || line[0] == '\t') {
 			if subcmd := p.parseIndentedCommand(line); subcmd != nil {
-				exists := false
-				for _, c := range cmd.Subcommands {
-					if c.Name == subcmd.Name {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					cmd.Subcommands = append(cmd.Subcommands, *subcmd)
-				}
+				cmdSet.add(*subcmd)
 			}
 		}
 	}
@@ -239,6 +270,10 @@ func (p *Parser) getManPage(name string) (string, error) {
 func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 	lines := strings.Split(output, "\n")
 
+	// Use sets for O(1) duplicate detection
+	flagSet := newFlagSet(&tool.GlobalFlags)
+	cmdSet := newCommandSet(&tool.Subcommands)
+
 	inCommands := false
 	inOptions := false
 
@@ -274,31 +309,21 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 		// Parse commands
 		if inCommands {
 			if cmd := p.parseCommandLine(line); cmd != nil {
-				tool.Subcommands = append(tool.Subcommands, *cmd)
+				cmdSet.add(*cmd)
 			}
 		}
 
 		// Parse options/flags
 		if inOptions {
 			if flag := p.parseFlagLine(line); flag != nil {
-				tool.GlobalFlags = append(tool.GlobalFlags, *flag)
+				flagSet.add(*flag)
 			}
 		}
 
 		// Also look for inline flags anywhere (lines starting with -)
 		if !inOptions && strings.HasPrefix(strings.TrimSpace(line), "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
-				// Avoid duplicates
-				exists := false
-				for _, f := range tool.GlobalFlags {
-					if f.Name == flag.Name {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					tool.GlobalFlags = append(tool.GlobalFlags, *flag)
-				}
+				flagSet.add(*flag)
 			}
 		}
 
@@ -306,17 +331,7 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 		// Pattern: "   clone     Clone a repository..."
 		if !inCommands && !inOptions && len(line) > 3 && (line[0] == ' ' || line[0] == '\t') {
 			if cmd := p.parseIndentedCommand(line); cmd != nil {
-				// Avoid duplicates
-				exists := false
-				for _, c := range tool.Subcommands {
-					if c.Name == cmd.Name {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					tool.Subcommands = append(tool.Subcommands, *cmd)
-				}
+				cmdSet.add(*cmd)
 			}
 		}
 	}
@@ -471,6 +486,9 @@ func (p *Parser) parseFlagLine(line string) *types.Flag {
 func (p *Parser) parseManPage(tool *types.Tool, output string) {
 	lines := strings.Split(output, "\n")
 
+	// Use set for O(1) duplicate detection
+	flagSet := newFlagSet(&tool.GlobalFlags)
+
 	inOptions := false
 	var currentFlag *types.Flag
 
@@ -499,16 +517,9 @@ func (p *Parser) parseManPage(tool *types.Tool, output string) {
 		// Man pages typically have flags at a certain indentation
 		if strings.HasPrefix(trimmed, "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
-				// Check for duplicate
-				exists := false
-				for _, f := range tool.GlobalFlags {
-					if f.Name == flag.Name {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					tool.GlobalFlags = append(tool.GlobalFlags, *flag)
+				prevLen := len(tool.GlobalFlags)
+				flagSet.add(*flag)
+				if len(tool.GlobalFlags) > prevLen {
 					currentFlag = &tool.GlobalFlags[len(tool.GlobalFlags)-1]
 				}
 			}
