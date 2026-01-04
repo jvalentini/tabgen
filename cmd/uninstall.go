@@ -69,9 +69,18 @@ func removeSymlinks(home string) {
 	}
 }
 
-// removeTimer removes systemd timer and cron job
+// removeTimer removes systemd timer, launchd agent, and cron job
 func removeTimer(home string) {
-	// Remove systemd timer
+	// Remove launchd agent (macOS)
+	plistPath := filepath.Join(home, "Library", "LaunchAgents", "com.tabgen.scan.plist")
+	if _, err := os.Stat(plistPath); err == nil {
+		// Unload the agent first
+		exec.Command("launchctl", "unload", plistPath).Run()
+		os.Remove(plistPath)
+		fmt.Println("  ✓ Removed launchd agent")
+	}
+
+	// Remove systemd timer (Linux)
 	userDir := filepath.Join(home, ".config", "systemd", "user")
 	servicePath := filepath.Join(userDir, "tabgen-scan.service")
 	timerPath := filepath.Join(userDir, "tabgen-scan.timer")

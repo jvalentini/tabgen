@@ -94,9 +94,14 @@ func createSymlink(src, dest string) error {
 	return os.Symlink(src, dest)
 }
 
-// installTimer sets up systemd user timer or cron
+// installTimer sets up systemd user timer, launchd agent, or cron
 func installTimer(storage *config.Storage, home string) error {
-	// Check if systemd user instance is available
+	// On macOS, use launchd
+	if hasLaunchd() {
+		return installLaunchd(home)
+	}
+
+	// On Linux, check if systemd user instance is available
 	if hasSystemdUser() {
 		return installSystemdTimer(home)
 	}
@@ -113,6 +118,74 @@ func hasSystemdUser() bool {
 	cmd := exec.Command("systemctl", "--user", "status")
 	err := cmd.Run()
 	return err == nil
+}
+
+// hasLaunchd checks if we're on macOS (which uses launchd)
+func hasLaunchd() bool {
+	return runtime.GOOS == "darwin"
+}
+
+// installLaunchd installs a macOS launchd agent for daily scans
+func installLaunchd(home string) error {
+	launchAgentsDir := filepath.Join(home, "Library", "LaunchAgents")
+	if err := os.MkdirAll(launchAgentsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create LaunchAgents dir: %w", err)
+	}
+
+	// Get the tabgen binary path
+	tabgenPath, err := os.Executable()
+	if err != nil {
+		tabgenPath = "/usr/local/bin/tabgen" // Fall back to common location
+	}
+
+	// Create launchd plist for daily scan at 4am
+	plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tabgen.scan</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>%s</string>
+        <string>scan</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>%s</string>
+    <key>StandardErrorPath</key>
+    <string>%s</string>
+</dict>
+</plist>
+`, tabgenPath,
+		filepath.Join(home, "Library", "Logs", "tabgen-scan.log"),
+		filepath.Join(home, "Library", "Logs", "tabgen-scan.log"))
+
+	plistPath := filepath.Join(launchAgentsDir, "com.tabgen.scan.plist")
+	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
+		return fmt.Errorf("failed to write launchd plist: %w", err)
+	}
+
+	// Ensure Logs directory exists
+	logsDir := filepath.Join(home, "Library", "Logs")
+	os.MkdirAll(logsDir, 0755)
+
+	// Unload first if already loaded (ignore errors)
+	exec.Command("launchctl", "unload", plistPath).Run()
+
+	// Load the agent
+	if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
+		return fmt.Errorf("failed to load launchd agent: %w", err)
+	}
+
+	fmt.Println("  ✓ Launchd agent installed (daily scan at 4am)")
+	return nil
 }
 
 // installSystemdTimer installs a systemd user timer
