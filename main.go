@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/justin/tabgen/cmd"
-	"github.com/justin/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/cmd"
 )
 
 func main() {

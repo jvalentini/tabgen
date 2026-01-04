@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin/tabgen/internal/config"
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // HelpTimeout is the maximum time to wait for help command execution
