@@ -626,7 +626,6 @@ func TestParse_InputValidation(t *testing.T) {
 	}
 }
 
-
 func TestParseFlagLine_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name     string
