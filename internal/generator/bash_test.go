@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 func TestBash_Generate_Basic(t *testing.T) {

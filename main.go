@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/jvalentini/tabgen/cmd"
+	"github.com/jvalentini/tabgen/internal/config"
 )
 
 func main() {

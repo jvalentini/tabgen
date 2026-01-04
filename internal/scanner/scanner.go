@@ -50,10 +50,16 @@ func (s *Scanner) isExcluded(name string) (bool, error) {
 }
 
 // Scan walks $PATH and returns a catalog of discovered tools
+// Only includes tools that appear in shell history
 func (s *Scanner) Scan() (*types.Catalog, error) {
 	catalog := &types.Catalog{
 		LastScan: time.Now(),
 		Tools:    make(map[string]types.CatalogEntry),
+	}
+
+	usedCommands, err := GetUsedCommands()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read shell history: %w", err)
 	}
 
 	pathEnv := os.Getenv("PATH")
@@ -71,7 +77,7 @@ func (s *Scanner) Scan() (*types.Catalog, error) {
 
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue // Skip unreadable directories
+			continue
 		}
 
 		for _, entry := range entries {
@@ -81,13 +87,11 @@ func (s *Scanner) Scan() (*types.Catalog, error) {
 
 			name := entry.Name()
 
-			// Skip if already seen (earlier PATH entries take precedence)
 			if seen[name] {
 				continue
 			}
 			seen[name] = true
 
-			// Skip excluded tools
 			excluded, err := s.isExcluded(name)
 			if err != nil {
 				return nil, fmt.Errorf("checking exclusion for %s: %w", name, err)
@@ -96,45 +100,46 @@ func (s *Scanner) Scan() (*types.Catalog, error) {
 				continue
 			}
 
-			// Skip hidden files
 			if strings.HasPrefix(name, ".") {
+				continue
+			}
+
+			if !usedCommands[name] {
 				continue
 			}
 
 			fullPath := filepath.Join(dir, name)
 
-			// Check if executable
 			info, err := entry.Info()
 			if err != nil {
 				continue
 			}
 			if info.Mode()&0111 == 0 {
-				continue // Not executable
+				continue
 			}
 
-			entry := types.CatalogEntry{
+			catalogEntry := types.CatalogEntry{
 				Name:      name,
 				Path:      fullPath,
 				Generated: false,
 				LastScan:  time.Now(),
 			}
 
-			// In quick mode, skip expensive --help and man checks
 			if !s.quickMode {
 				hasHelp, helpErr := s.checkHelp(fullPath)
 				if helpErr != nil {
 					return nil, fmt.Errorf("checking help for %s: %w", name, helpErr)
 				}
-				entry.HasHelp = hasHelp
+				catalogEntry.HasHelp = hasHelp
 
 				hasMan, manErr := s.checkManPage(name)
 				if manErr != nil {
 					return nil, fmt.Errorf("checking man page for %s: %w", name, manErr)
 				}
-				entry.HasManPage = hasMan
+				catalogEntry.HasManPage = hasMan
 			}
 
-			catalog.Tools[name] = entry
+			catalog.Tools[name] = catalogEntry
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jvalentini/tabgen/internal/config"
 	"github.com/jvalentini/tabgen/internal/types"
 )
 

@@ -8,6 +8,7 @@ import (
 	"github.com/jvalentini/tabgen/internal/config"
 	"github.com/jvalentini/tabgen/internal/generator"
 	"github.com/jvalentini/tabgen/internal/parser"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // GenerateOptions configures the generate command
