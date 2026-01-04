@@ -536,8 +536,7 @@ func (p *Parser) parseFlagLine(line string) *types.Flag {
 	}
 
 	// Parse the flag part
-	tokens := strings.Fields(flagPart)
-	for _, token := range tokens {
+	for token := range strings.FieldsSeq(flagPart) {
 		token = strings.TrimSuffix(token, ",")
 
 		if strings.HasPrefix(token, "--") {
