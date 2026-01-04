@@ -834,15 +834,19 @@ func TestParseManPage_FlagContinuation(t *testing.T) {
 }
 
 func TestParseCommandLine_ShortAlias(t *testing.T) {
-	// Test "command, c" format with just alias
+	// Test "command, c" format - longest name is primary, shorter are aliases
 	p := New()
 	cmd := p.parseCommandLine("  b, build       Build it")
 	if cmd == nil {
 		t.Fatal("expected command, got nil")
 	}
-	// The code takes the first part before comma
-	if cmd.Name != "b" {
-		t.Errorf("expected name 'b', got %q", cmd.Name)
+	// Longest name becomes primary
+	if cmd.Name != "build" {
+		t.Errorf("expected name 'build', got %q", cmd.Name)
+	}
+	// Shorter name becomes alias
+	if len(cmd.Aliases) != 1 || cmd.Aliases[0] != "b" {
+		t.Errorf("expected aliases ['b'], got %v", cmd.Aliases)
 	}
 }
 

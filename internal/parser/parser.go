@@ -459,18 +459,45 @@ func (p *Parser) parseCommandLine(line string) *types.Command {
 	}
 
 	cmdPart := strings.TrimSpace(parts[0])
-	// Handle "command, c" format
-	if idx := strings.Index(cmdPart, ","); idx > 0 {
-		cmdPart = strings.TrimSpace(cmdPart[:idx])
-	}
 
-	// Validate: should be a simple word
-	if !isValidCommandName(cmdPart) {
-		return nil
+	// Handle "command, c" or "c, command" format - extract name and aliases
+	var primaryName string
+	var aliases []string
+
+	if strings.Contains(cmdPart, ",") {
+		// Split on comma and collect all valid names
+		nameParts := strings.Split(cmdPart, ",")
+		var validNames []string
+		for _, np := range nameParts {
+			np = strings.TrimSpace(np)
+			if isValidCommandName(np) {
+				validNames = append(validNames, np)
+			}
+		}
+		if len(validNames) == 0 {
+			return nil
+		}
+		// Use the longest name as primary, rest as aliases
+		primaryName = validNames[0]
+		for _, n := range validNames[1:] {
+			if len(n) > len(primaryName) {
+				aliases = append(aliases, primaryName)
+				primaryName = n
+			} else {
+				aliases = append(aliases, n)
+			}
+		}
+	} else {
+		// Validate: should be a simple word
+		if !isValidCommandName(cmdPart) {
+			return nil
+		}
+		primaryName = cmdPart
 	}
 
 	cmd := &types.Command{
-		Name: cmdPart,
+		Name:    primaryName,
+		Aliases: aliases,
 	}
 	if len(parts) > 1 {
 		cmd.Description = strings.TrimSpace(parts[1])

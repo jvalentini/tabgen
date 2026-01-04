@@ -28,11 +28,12 @@ func (b *Bash) Generate(tool *types.Tool) string {
 	sb.WriteString("    local cur prev words cword\n")
 	sb.WriteString("    _init_completion || return\n\n")
 
-	// Build list of subcommands
+	// Build list of subcommands (including aliases)
 	if len(tool.Subcommands) > 0 {
-		cmds := make([]string, len(tool.Subcommands))
-		for i, cmd := range tool.Subcommands {
-			cmds[i] = cmd.Name
+		var cmds []string
+		for _, cmd := range tool.Subcommands {
+			cmds = append(cmds, cmd.Name)
+			cmds = append(cmds, cmd.Aliases...)
 		}
 		sb.WriteString(fmt.Sprintf("    local commands=\"%s\"\n", strings.Join(cmds, " ")))
 	}
@@ -98,20 +99,32 @@ func (b *Bash) Generate(tool *types.Tool) string {
 func (b *Bash) generateSubcommandCase(sb *strings.Builder, cmd types.Command, indent int) {
 	prefix := strings.Repeat("    ", indent)
 
-	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, cmd.Name))
+	// Build pattern matching name and aliases (e.g., "build|b")
+	pattern := cmd.Name
+	if len(cmd.Aliases) > 0 {
+		pattern = cmd.Name + "|" + strings.Join(cmd.Aliases, "|")
+	}
+	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, pattern))
 
 	// If this command has nested subcommands, handle them
 	if len(cmd.Subcommands) > 0 {
-		subcmds := make([]string, len(cmd.Subcommands))
-		for i, sub := range cmd.Subcommands {
-			subcmds[i] = sub.Name
+		// Include aliases in the subcommand list
+		var subcmds []string
+		for _, sub := range cmd.Subcommands {
+			subcmds = append(subcmds, sub.Name)
+			subcmds = append(subcmds, sub.Aliases...)
 		}
 
 		sb.WriteString(fmt.Sprintf("%s    case \"$subcmd\" in\n", prefix))
 		for _, sub := range cmd.Subcommands {
 			if len(sub.Flags) > 0 {
 				subFlags := collectFlags(sub.Flags)
-				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, sub.Name))
+				// Build pattern matching name and aliases
+				subPattern := sub.Name
+				if len(sub.Aliases) > 0 {
+					subPattern = sub.Name + "|" + strings.Join(sub.Aliases, "|")
+				}
+				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, subPattern))
 				sb.WriteString(fmt.Sprintf("%s            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", prefix, strings.Join(subFlags, " ")))
 				sb.WriteString(fmt.Sprintf("%s            return\n", prefix))
 				sb.WriteString(fmt.Sprintf("%s            ;;\n", prefix))

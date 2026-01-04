@@ -20,6 +20,7 @@ type Flag struct {
 // Command represents a command or subcommand
 type Command struct {
 	Name        string    `json:"name"`                  // Command name
+	Aliases     []string  `json:"aliases,omitempty"`     // Alternative names (e.g., "br" for "branch")
 	Description string    `json:"description,omitempty"` // Help text
 	Subcommands []Command `json:"subcommands,omitempty"` // Nested subcommands
 	Flags       []Flag    `json:"flags,omitempty"`       // Command-specific flags

@@ -54,6 +54,10 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 				desc = cmd.Name
 			}
 			sb.WriteString(fmt.Sprintf("                '%s:%s'\n", cmd.Name, desc))
+			// Include aliases as completable names
+			for _, alias := range cmd.Aliases {
+				sb.WriteString(fmt.Sprintf("                '%s:%s (alias for %s)'\n", alias, desc, cmd.Name))
+			}
 		}
 		sb.WriteString("            )\n")
 		sb.WriteString("            _describe 'command' commands\n")
@@ -62,7 +66,7 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 		sb.WriteString("        args)\n")
 		sb.WriteString("            case $words[1] in\n")
 		for _, cmd := range tool.Subcommands {
-			z.generateZshSubcommandCase(&sb, cmd)
+			z.generateZshSubcommandCase(&sb, cmd, true)
 		}
 		sb.WriteString("                *)\n")
 		sb.WriteString("                    _files\n")
@@ -83,20 +87,30 @@ func (z *Zsh) Generate(tool *types.Tool) string {
 }
 
 // generateZshSubcommandCase generates a case entry for a subcommand
-func (z *Zsh) generateZshSubcommandCase(sb *strings.Builder, cmd types.Command) {
+func (z *Zsh) generateZshSubcommandCase(sb *strings.Builder, cmd types.Command, includeAliases bool) {
 	// Skip if no flags and no nested subcommands
 	if len(cmd.Flags) == 0 && len(cmd.Subcommands) == 0 {
 		return
 	}
 
-	sb.WriteString(fmt.Sprintf("                %s)\n", cmd.Name))
+	// Build pattern matching name and aliases (e.g., "build|b")
+	pattern := cmd.Name
+	if includeAliases && len(cmd.Aliases) > 0 {
+		pattern = cmd.Name + "|" + strings.Join(cmd.Aliases, "|")
+	}
+	sb.WriteString(fmt.Sprintf("                %s)\n", pattern))
 
 	if len(cmd.Subcommands) > 0 {
 		// Has nested subcommands
 		sb.WriteString("                    case $words[2] in\n")
 		for _, sub := range cmd.Subcommands {
 			if len(sub.Flags) > 0 {
-				sb.WriteString(fmt.Sprintf("                        %s)\n", sub.Name))
+				// Build pattern matching name and aliases
+				subPattern := sub.Name
+				if len(sub.Aliases) > 0 {
+					subPattern = sub.Name + "|" + strings.Join(sub.Aliases, "|")
+				}
+				sb.WriteString(fmt.Sprintf("                        %s)\n", subPattern))
 				sb.WriteString("                            _arguments \\\n")
 				for _, flag := range sub.Flags {
 					spec := z.formatFlagSpec(flag)
@@ -117,6 +131,10 @@ func (z *Zsh) generateZshSubcommandCase(sb *strings.Builder, cmd types.Command) 
 				desc = sub.Name
 			}
 			sb.WriteString(fmt.Sprintf("                                '%s:%s'\n", sub.Name, desc))
+			// Include aliases
+			for _, alias := range sub.Aliases {
+				sb.WriteString(fmt.Sprintf("                                '%s:%s (alias for %s)'\n", alias, desc, sub.Name))
+			}
 		}
 		sb.WriteString("                            )\n")
 		sb.WriteString("                            _describe 'subcommand' subcommands\n")
