@@ -9,7 +9,7 @@ import (
 var Verbose bool
 
 // Logf prints a formatted message if verbose mode is enabled
-func Logf(format string, args ...interface{}) {
+func Logf(format string, args ...any) {
 	if Verbose {
 		fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...)
 	}
