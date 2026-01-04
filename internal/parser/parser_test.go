@@ -3,6 +3,7 @@ package parser
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jvalentini/tabgen/internal/types"
 )
@@ -576,9 +577,81 @@ func TestNew(t *testing.T) {
 	if p == nil {
 		t.Error("New() returned nil")
 	}
+	// Verify default config is applied
+	cfg := p.Config()
+	if cfg.MaxDepth != 2 {
+		t.Errorf("expected default MaxDepth 2, got %d", cfg.MaxDepth)
+	}
+	if cfg.HelpTimeout != 5*time.Second {
+		t.Errorf("expected default HelpTimeout 5s, got %v", cfg.HelpTimeout)
+	}
+	if len(cfg.VersionCmds) != 4 {
+		t.Errorf("expected 4 default VersionCmds, got %d", len(cfg.VersionCmds))
+	}
+}
+
+func TestNewWithConfig(t *testing.T) {
+	customConfig := ParserConfig{
+		MaxDepth:    5,
+		HelpTimeout: 10 * time.Second,
+		VersionCmds: []string{"--ver", "-version"},
+	}
+	p := New(customConfig)
+	if p == nil {
+		t.Error("New(config) returned nil")
+	}
+	cfg := p.Config()
+	if cfg.MaxDepth != 5 {
+		t.Errorf("expected MaxDepth 5, got %d", cfg.MaxDepth)
+	}
+	if cfg.HelpTimeout != 10*time.Second {
+		t.Errorf("expected HelpTimeout 10s, got %v", cfg.HelpTimeout)
+	}
+	if len(cfg.VersionCmds) != 2 {
+		t.Errorf("expected 2 VersionCmds, got %d", len(cfg.VersionCmds))
+	}
+}
+
+func TestNewWithPartialConfig(t *testing.T) {
+	// Test that zero values get defaults
+	partialConfig := ParserConfig{
+		MaxDepth: 3, // Only set MaxDepth, leave others at zero
+	}
+	p := New(partialConfig)
+	cfg := p.Config()
+	if cfg.MaxDepth != 3 {
+		t.Errorf("expected MaxDepth 3, got %d", cfg.MaxDepth)
+	}
+	// Zero values should get defaults
+	if cfg.HelpTimeout != 5*time.Second {
+		t.Errorf("expected default HelpTimeout 5s for zero value, got %v", cfg.HelpTimeout)
+	}
+	if len(cfg.VersionCmds) != 4 {
+		t.Errorf("expected default VersionCmds for empty slice, got %d", len(cfg.VersionCmds))
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.MaxDepth != 2 {
+		t.Errorf("DefaultConfig MaxDepth should be 2, got %d", cfg.MaxDepth)
+	}
+	if cfg.HelpTimeout != 5*time.Second {
+		t.Errorf("DefaultConfig HelpTimeout should be 5s, got %v", cfg.HelpTimeout)
+	}
+	expectedCmds := []string{"--version", "-V", "version", "-v"}
+	if len(cfg.VersionCmds) != len(expectedCmds) {
+		t.Errorf("DefaultConfig VersionCmds length mismatch: got %d, want %d", len(cfg.VersionCmds), len(expectedCmds))
+	}
+	for i, cmd := range expectedCmds {
+		if i < len(cfg.VersionCmds) && cfg.VersionCmds[i] != cmd {
+			t.Errorf("DefaultConfig VersionCmds[%d] = %q, want %q", i, cfg.VersionCmds[i], cmd)
+		}
+	}
 }
 
 func TestMaxSubcommandDepth(t *testing.T) {
+	// MaxSubcommandDepth constant kept for backward compatibility
 	if MaxSubcommandDepth != 2 {
 		t.Errorf("MaxSubcommandDepth should be 2, got %d", MaxSubcommandDepth)
 	}
