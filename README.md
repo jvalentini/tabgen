@@ -1,5 +1,9 @@
 # TabGen
 
+<p align="center">
+  <img src="banner.png" alt="TabGen - Automatic Tab Completion Generator" />
+</p>
+
 Automatically generate tab completions for CLI tools by analyzing their `--help` output and man pages.
 
 ## Overview
