@@ -2,16 +2,30 @@ package cmd
 
 import (
 	"fmt"
+	"runtime"
+	"sync"
 
 	"github.com/justin/tabgen/internal/config"
 	"github.com/justin/tabgen/internal/generator"
 	"github.com/justin/tabgen/internal/parser"
+	"github.com/justin/tabgen/internal/types"
 )
 
 // GenerateOptions configures the generate command
 type GenerateOptions struct {
-	Tool  string // Specific tool to generate (empty = all)
-	Force bool   // Force regeneration even if up-to-date
+	Tool    string // Specific tool to generate (empty = all)
+	Force   bool   // Force regeneration even if up-to-date
+	Workers int    // Number of concurrent workers (default: NumCPU)
+}
+
+// toolResult holds the outcome of processing a single tool
+type toolResult struct {
+	Name             string
+	Status           string // "success", "skipped", "failed"
+	Version          string
+	GeneratedVersion string
+	Error            error
+	Message          string
 }
 
 // Generate creates completion scripts for one or all tools
@@ -30,10 +44,6 @@ func Generate(opts GenerateOptions) error {
 		fmt.Println("No tools in catalog. Run 'tabgen scan' first.")
 		return nil
 	}
-
-	p := parser.New()
-	bashGen := generator.NewBash()
-	zshGen := generator.NewZsh()
 
 	// Determine which tools to generate
 	var tools []string
@@ -56,71 +66,89 @@ func Generate(opts GenerateOptions) error {
 
 	fmt.Printf("Processing %d tools...\n", len(tools))
 
+	// Set default workers
+	workers := opts.Workers
+	if workers <= 0 {
+		workers = runtime.NumCPU()
+	}
+	// Don't use more workers than tools
+	if workers > len(tools) {
+		workers = len(tools)
+	}
+
+	// Create channels
+	toolChan := make(chan string, len(tools))
+	resultChan := make(chan toolResult, len(tools))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			processTools(toolChan, resultChan, catalog, storage, opts.Force)
+		}()
+	}
+
+	// Send tools to workers
+	for _, name := range tools {
+		toolChan <- name
+	}
+	close(toolChan)
+
+	// Wait for workers to finish, then close results
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results
 	succeeded := 0
 	skipped := 0
 	failed := 0
 
-	for _, name := range tools {
-		entry := catalog.Tools[name]
+	catalogUpdates := make(map[string]types.CatalogEntry)
 
-		// Parse the tool (also detects version)
-		tool, err := p.Parse(name, entry.Path)
-		if err != nil {
-			fmt.Printf("  ✗ %s: %v\n", name, err)
-			failed++
-			continue
-		}
-
-		// Skip tools we couldn't parse
-		if tool.Source == "none" {
-			continue
-		}
-
-		// Check if we can skip (already generated with same version)
-		if !opts.Force && entry.Generated && entry.GeneratedVersion != "" {
-			if entry.GeneratedVersion == tool.Version {
-				skipped++
-				continue
+	for result := range resultChan {
+		switch result.Status {
+		case "success":
+			if result.Version != "" {
+				fmt.Printf("  ✓ %s (v%s)\n", result.Name, result.Version)
+			} else {
+				fmt.Printf("  ✓ %s\n", result.Name)
 			}
-			// Version changed, will regenerate
-			fmt.Printf("  ↻ %s: version changed (%s → %s)\n", name, entry.GeneratedVersion, tool.Version)
-		}
-
-		// Save parsed tool data
-		if err := storage.SaveTool(tool); err != nil {
-			fmt.Printf("  ✗ %s: failed to save: %v\n", name, err)
+			succeeded++
+			// Queue catalog update
+			entry := catalog.Tools[result.Name]
+			entry.Generated = true
+			entry.Version = result.Version
+			entry.GeneratedVersion = result.GeneratedVersion
+			catalogUpdates[result.Name] = entry
+		case "skipped":
+			skipped++
+		case "failed":
+			fmt.Printf("  ✗ %s: %v\n", result.Name, result.Error)
 			failed++
-			continue
+		case "version_changed":
+			fmt.Printf("  ↻ %s: %s\n", result.Name, result.Message)
+			if result.Version != "" {
+				fmt.Printf("  ✓ %s (v%s)\n", result.Name, result.Version)
+			} else {
+				fmt.Printf("  ✓ %s\n", result.Name)
+			}
+			succeeded++
+			// Queue catalog update
+			entry := catalog.Tools[result.Name]
+			entry.Generated = true
+			entry.Version = result.Version
+			entry.GeneratedVersion = result.GeneratedVersion
+			catalogUpdates[result.Name] = entry
 		}
+	}
 
-		// Generate bash completion
-		bashScript := bashGen.Generate(tool)
-		if err := storage.SaveBashCompletion(name, bashScript); err != nil {
-			fmt.Printf("  ✗ %s: failed to save bash completion: %v\n", name, err)
-			failed++
-			continue
-		}
-
-		// Generate zsh completion
-		zshScript := zshGen.Generate(tool)
-		if err := storage.SaveZshCompletion(name, zshScript); err != nil {
-			fmt.Printf("  ✗ %s: failed to save zsh completion: %v\n", name, err)
-			failed++
-			continue
-		}
-
-		// Update catalog with version info
-		entry.Generated = true
-		entry.Version = tool.Version
-		entry.GeneratedVersion = tool.Version
+	// Apply catalog updates
+	for name, entry := range catalogUpdates {
 		catalog.Tools[name] = entry
-
-		if tool.Version != "" {
-			fmt.Printf("  ✓ %s (v%s)\n", name, tool.Version)
-		} else {
-			fmt.Printf("  ✓ %s\n", name)
-		}
-		succeeded++
 	}
 
 	// Save updated catalog
@@ -138,4 +166,74 @@ func Generate(opts GenerateOptions) error {
 	}
 
 	return nil
+}
+
+// processTools is the worker function that processes tools from the input channel
+func processTools(toolChan <-chan string, resultChan chan<- toolResult, catalog *types.Catalog, storage *config.Storage, force bool) {
+	p := parser.New()
+	bashGen := generator.NewBash()
+	zshGen := generator.NewZsh()
+
+	for name := range toolChan {
+		entry := catalog.Tools[name]
+		result := toolResult{Name: name}
+
+		// Parse the tool (also detects version)
+		tool, err := p.Parse(name, entry.Path)
+		if err != nil {
+			result.Status = "failed"
+			result.Error = err
+			resultChan <- result
+			continue
+		}
+
+		// Skip tools we couldn't parse
+		if tool.Source == "none" {
+			continue
+		}
+
+		// Check if we can skip (already generated with same version)
+		if !force && entry.Generated && entry.GeneratedVersion != "" {
+			if entry.GeneratedVersion == tool.Version {
+				result.Status = "skipped"
+				resultChan <- result
+				continue
+			}
+			// Version changed, will regenerate
+			result.Status = "version_changed"
+			result.Message = fmt.Sprintf("version changed (%s → %s)", entry.GeneratedVersion, tool.Version)
+		} else {
+			result.Status = "success"
+		}
+
+		// Save parsed tool data
+		if err := storage.SaveTool(tool); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Errorf("failed to save: %w", err)
+			resultChan <- result
+			continue
+		}
+
+		// Generate bash completion
+		bashScript := bashGen.Generate(tool)
+		if err := storage.SaveBashCompletion(name, bashScript); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Errorf("failed to save bash completion: %w", err)
+			resultChan <- result
+			continue
+		}
+
+		// Generate zsh completion
+		zshScript := zshGen.Generate(tool)
+		if err := storage.SaveZshCompletion(name, zshScript); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Errorf("failed to save zsh completion: %w", err)
+			resultChan <- result
+			continue
+		}
+
+		result.Version = tool.Version
+		result.GeneratedVersion = tool.Version
+		resultChan <- result
+	}
 }

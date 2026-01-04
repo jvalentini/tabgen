@@ -42,14 +42,16 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		force := fs.Bool("force", false, "force regeneration")
 		fs.BoolVar(force, "f", false, "force regeneration (shorthand)")
+		workers := fs.Int("workers", 0, "number of concurrent workers (default: NumCPU)")
+		fs.IntVar(workers, "w", 0, "number of concurrent workers (shorthand)")
 		fs.Usage = func() {
-			fmt.Fprintln(os.Stderr, "Usage: tabgen generate [tool] [-f|--force]")
+			fmt.Fprintln(os.Stderr, "Usage: tabgen generate [tool] [-f|--force] [-w|--workers N]")
 			fs.PrintDefaults()
 		}
 		if err := fs.Parse(args); err != nil {
 			os.Exit(1)
 		}
-		opts := cmd.GenerateOptions{Force: *force}
+		opts := cmd.GenerateOptions{Force: *force, Workers: *workers}
 		if fs.NArg() > 0 {
 			opts.Tool = fs.Arg(0)
 		}
@@ -137,7 +139,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  scan                    Scan $PATH for executable tools")
-	fmt.Println("  generate [tool] [-f]    Generate completions (-f to force regeneration)")
+	fmt.Println("  generate [tool] [-f] [-w N]  Generate completions (-f force, -w workers)")
 	fmt.Println("  list [--all]            List discovered tools")
 	fmt.Println("  install [--skip-timer]  Set up symlinks, timer, and shell hooks")
 	fmt.Println("  uninstall [--keep-data] Remove TabGen installation")
