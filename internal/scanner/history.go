@@ -73,9 +73,8 @@ func extractCommand(line string) string {
 	}
 
 	for _, prefix := range []string{"sudo ", "doas "} {
-		if strings.HasPrefix(line, prefix) {
-			line = strings.TrimPrefix(line, prefix)
-			line = strings.TrimSpace(line)
+		if after, found := strings.CutPrefix(line, prefix); found {
+			line = strings.TrimSpace(after)
 		}
 	}
 
