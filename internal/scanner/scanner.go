@@ -68,9 +68,8 @@ func (s *Scanner) Scan() (*types.Catalog, error) {
 	}
 
 	seen := make(map[string]bool)
-	dirs := strings.Split(pathEnv, string(os.PathListSeparator))
 
-	for _, dir := range dirs {
+	for dir := range strings.SplitSeq(pathEnv, string(os.PathListSeparator)) {
 		if dir == "" {
 			continue
 		}
