@@ -616,11 +616,11 @@ func TestParseFlagLine_EdgeCases(t *testing.T) {
 
 func TestParseFlagLine_ArgumentValues(t *testing.T) {
 	tests := []struct {
-		name           string
-		line           string
-		wantName       string
-		wantArg        string
-		wantArgValues  []string
+		name          string
+		line          string
+		wantName      string
+		wantArg       string
+		wantArgValues []string
 	}{
 		{
 			name:          "pipe-separated in equals",
@@ -658,11 +658,11 @@ func TestParseFlagLine_ArgumentValues(t *testing.T) {
 			wantArgValues: []string{"a", "b", "c"},
 		},
 		{
-			name:           "regular arg without choices",
-			line:           "  --config <file>   Config file",
-			wantName:       "--config",
-			wantArg:        "file",
-			wantArgValues:  nil,
+			name:          "regular arg without choices",
+			line:          "  --config <file>   Config file",
+			wantName:      "--config",
+			wantArg:       "file",
+			wantArgValues: nil,
 		},
 	}
 
