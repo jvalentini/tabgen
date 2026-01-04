@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/justin/tabgen/internal/types"
@@ -858,5 +859,47 @@ func TestParseIndentedCommand_LongName(t *testing.T) {
 	cmd = p.parseIndentedCommand("   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  Some description")
 	if cmd != nil {
 		t.Error("expected nil for 31-char command name (over limit)")
+	}
+}
+
+func TestParse_InputValidation(t *testing.T) {
+	p := New()
+
+	tests := []struct {
+		name     string
+		toolName string
+		path     string
+		wantErr  string
+	}{
+		{
+			name:     "empty name",
+			toolName: "",
+			path:     "/bin/ls",
+			wantErr:  "name cannot be empty",
+		},
+		{
+			name:     "empty path",
+			toolName: "ls",
+			path:     "",
+			wantErr:  "path cannot be empty",
+		},
+		{
+			name:     "non-existent path",
+			toolName: "fake",
+			path:     "/nonexistent/path/to/binary",
+			wantErr:  "path does not exist",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := p.Parse(tt.toolName, tt.path)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }
