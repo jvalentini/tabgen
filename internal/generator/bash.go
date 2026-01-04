@@ -15,6 +15,24 @@ func NewBash() *Bash {
 	return &Bash{}
 }
 
+// GenerateWithLimits creates a bash completion script with bounds checking
+func (b *Bash) GenerateWithLimits(tool *types.Tool) GenerateResult {
+	// Apply truncation if needed
+	truncatedTool, warnings := truncateTool(tool)
+
+	// Generate the script
+	script := b.Generate(truncatedTool)
+
+	// Check output size
+	script, sizeWarnings := checkOutputSize(script, tool.Name)
+	warnings = append(warnings, sizeWarnings...)
+
+	return GenerateResult{
+		Script:   script,
+		Warnings: warnings,
+	}
+}
+
 // Generate creates a bash completion script for a tool
 func (b *Bash) Generate(tool *types.Tool) string {
 	var sb strings.Builder
