@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 func TestParseHelpOutput_GNUStyle(t *testing.T) {

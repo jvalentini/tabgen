@@ -5,10 +5,9 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/justin/tabgen/internal/config"
-	"github.com/justin/tabgen/internal/generator"
-	"github.com/justin/tabgen/internal/parser"
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/generator"
+	"github.com/jvalentini/tabgen/internal/parser"
 )
 
 // GenerateOptions configures the generate command

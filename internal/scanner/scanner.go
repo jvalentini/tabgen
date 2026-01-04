@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // Scanner discovers executables in $PATH

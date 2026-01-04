@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/config"
 )
 
 // Status shows the current state of TabGen installation
