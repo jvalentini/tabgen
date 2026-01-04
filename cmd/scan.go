@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/justin/tabgen/internal/config"
-	"github.com/justin/tabgen/internal/scanner"
+	"github.com/jvalentini/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/scanner"
 )
 
 // Scan walks $PATH and discovers executable tools

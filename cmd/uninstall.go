@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/justin/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/config"
 )
 
 // Uninstall removes TabGen: symlinks, timers, shell hooks, and optionally data

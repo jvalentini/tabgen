@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/justin/tabgen/internal/config"
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // Exclude manages the exclusion list

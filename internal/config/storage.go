@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // Storage handles reading and writing TabGen data files

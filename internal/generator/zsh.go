@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/justin/tabgen/internal/types"
+	"github.com/jvalentini/tabgen/internal/types"
 )
 
 // Zsh generates zsh completion scripts

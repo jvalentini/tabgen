@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/justin/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/config"
 )
 
 // List shows discovered tools and their status

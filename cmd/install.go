@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/justin/tabgen/internal/config"
+	"github.com/jvalentini/tabgen/internal/config"
 )
 
 // Install sets up TabGen: symlinks, timers, and shell hooks
