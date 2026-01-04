@@ -201,6 +201,11 @@ func isPermissionError(err error) bool {
 
 // ScanSingle scans a single tool by name
 func (s *Scanner) ScanSingle(name string) (*types.CatalogEntry, error) {
+	// Validate input
+	if name == "" {
+		return nil, fmt.Errorf("name cannot be empty")
+	}
+
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return nil, fmt.Errorf("looking up %s: %w", name, err)
