@@ -44,6 +44,9 @@ func (b *Bash) Generate(tool *types.Tool) string {
 		sb.WriteString(fmt.Sprintf("    local flags=\"%s\"\n", strings.Join(flags, " ")))
 	}
 
+	// Generate flag argument value completions
+	b.generateFlagValueCompletions(&sb, tool.GlobalFlags, tool.Subcommands)
+
 	sb.WriteString("\n")
 
 	// Handle subcommand-specific completions
@@ -172,4 +175,66 @@ func bashFuncName(name string) string {
 		return '_'
 	}, name)
 	return "_tabgen_" + clean
+}
+
+// generateFlagValueCompletions generates case statements for flag argument values
+func (b *Bash) generateFlagValueCompletions(sb *strings.Builder, globalFlags []types.Flag, subcommands []types.Command) {
+	// Collect all flags with argument values
+	flagValues := make(map[string][]string)
+
+	for _, flag := range globalFlags {
+		if len(flag.ArgumentValues) > 0 {
+			if flag.Name != "" {
+				flagValues[flag.Name] = flag.ArgumentValues
+			}
+			if flag.Short != "" {
+				flagValues[flag.Short] = flag.ArgumentValues
+			}
+		}
+	}
+
+	// Also collect from subcommands
+	var collectFromCommands func([]types.Command)
+	collectFromCommands = func(cmds []types.Command) {
+		for _, cmd := range cmds {
+			for _, flag := range cmd.Flags {
+				if len(flag.ArgumentValues) > 0 {
+					if flag.Name != "" {
+						flagValues[flag.Name] = flag.ArgumentValues
+					}
+					if flag.Short != "" {
+						flagValues[flag.Short] = flag.ArgumentValues
+					}
+				}
+			}
+			if len(cmd.Subcommands) > 0 {
+				collectFromCommands(cmd.Subcommands)
+			}
+		}
+	}
+	collectFromCommands(subcommands)
+
+	if len(flagValues) == 0 {
+		return
+	}
+
+	sb.WriteString("\n    # Handle flag argument value completions\n")
+	sb.WriteString("    case \"$prev\" in\n")
+
+	// Group flags by their values to reduce duplication
+	valueGroups := make(map[string][]string)
+	for flag, values := range flagValues {
+		key := strings.Join(values, " ")
+		valueGroups[key] = append(valueGroups[key], flag)
+	}
+
+	for values, flags := range valueGroups {
+		pattern := strings.Join(flags, "|")
+		sb.WriteString(fmt.Sprintf("        %s)\n", pattern))
+		sb.WriteString(fmt.Sprintf("            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", values))
+		sb.WriteString("            return\n")
+		sb.WriteString("            ;;\n")
+	}
+
+	sb.WriteString("    esac\n")
 }

@@ -176,35 +176,59 @@ func (z *Zsh) formatFlagSpec(flag types.Flag) string {
 	desc = strings.ReplaceAll(desc, "[", "\\[")
 	desc = strings.ReplaceAll(desc, "]", "\\]")
 
+	// Build argument completion part
+	argCompletion := z.formatArgCompletion(flag)
+
 	var spec string
 
 	// Handle both short and long forms
 	if flag.Short != "" && flag.Name != "" {
 		// Both short and long
-		if flag.Arg != "" {
-			spec = fmt.Sprintf("'(%s %s)'{%s,%s}'[%s]:%s:'",
-				flag.Short, flag.Name, flag.Short, flag.Name, desc, flag.Arg)
+		if argCompletion != "" {
+			spec = fmt.Sprintf("'(%s %s)'{%s,%s}'[%s]%s",
+				flag.Short, flag.Name, flag.Short, flag.Name, desc, argCompletion)
 		} else {
 			spec = fmt.Sprintf("'(%s %s)'{%s,%s}'[%s]'",
 				flag.Short, flag.Name, flag.Short, flag.Name, desc)
 		}
 	} else if flag.Name != "" {
 		// Long only
-		if flag.Arg != "" {
-			spec = fmt.Sprintf("'%s[%s]:%s:'", flag.Name, desc, flag.Arg)
+		if argCompletion != "" {
+			spec = fmt.Sprintf("'%s[%s]%s", flag.Name, desc, argCompletion)
 		} else {
 			spec = fmt.Sprintf("'%s[%s]'", flag.Name, desc)
 		}
 	} else {
 		// Short only
-		if flag.Arg != "" {
-			spec = fmt.Sprintf("'%s[%s]:%s:'", flag.Short, desc, flag.Arg)
+		if argCompletion != "" {
+			spec = fmt.Sprintf("'%s[%s]%s", flag.Short, desc, argCompletion)
 		} else {
 			spec = fmt.Sprintf("'%s[%s]'", flag.Short, desc)
 		}
 	}
 
 	return spec
+}
+
+// formatArgCompletion builds the argument completion portion of a zsh spec
+func (z *Zsh) formatArgCompletion(flag types.Flag) string {
+	if flag.Arg == "" && len(flag.ArgumentValues) == 0 {
+		return ""
+	}
+
+	argName := flag.Arg
+	if argName == "" {
+		argName = "value"
+	}
+
+	if len(flag.ArgumentValues) > 0 {
+		// Use specific values: :arg:(val1 val2 val3)'
+		values := strings.Join(flag.ArgumentValues, " ")
+		return fmt.Sprintf(":%s:(%s)'", argName, values)
+	}
+
+	// No specific values, use generic arg placeholder: :arg:'
+	return fmt.Sprintf(":%s:'", argName)
 }
 
 // zshFuncName creates a valid zsh function name from a tool name

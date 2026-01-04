@@ -1,14 +1,20 @@
 package types
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"time"
+)
 
 // Flag represents a command-line flag/option
 type Flag struct {
-	Name        string `json:"name"`                  // Long form, e.g., "--output"
-	Short       string `json:"short,omitempty"`       // Short form, e.g., "-o"
-	Arg         string `json:"arg,omitempty"`         // Argument name, e.g., "format"
-	Description string `json:"description,omitempty"` // Help text
-	Required    bool   `json:"required,omitempty"`    // Whether the flag is required
+	Name           string   `json:"name"`                     // Long form, e.g., "--output"
+	Short          string   `json:"short,omitempty"`          // Short form, e.g., "-o"
+	Arg            string   `json:"arg,omitempty"`            // Argument name, e.g., "format"
+	ArgumentValues []string `json:"argument_values,omitempty"` // Allowed values, e.g., ["json", "yaml"]
+	Description    string   `json:"description,omitempty"`    // Help text
+	Required       bool     `json:"required,omitempty"`       // Whether the flag is required
 }
 
 // Command represents a command or subcommand
@@ -31,12 +37,35 @@ type Tool struct {
 	GlobalFlags []Flag    `json:"global_flags,omitempty"` // Flags available to all subcommands
 }
 
+// ContentHash computes a hash of the tool's parsed content (subcommands and flags).
+// This is used to detect when help output changes without a version bump.
+func (t *Tool) ContentHash() string {
+	// Create a minimal struct with just the content we care about
+	// Excludes: Name, Path, Version, ParsedAt, Source (these change or don't affect completions)
+	content := struct {
+		Subcommands []Command `json:"subcommands,omitempty"`
+		GlobalFlags []Flag    `json:"global_flags,omitempty"`
+	}{
+		Subcommands: t.Subcommands,
+		GlobalFlags: t.GlobalFlags,
+	}
+
+	data, err := json.Marshal(content)
+	if err != nil {
+		return ""
+	}
+
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
 // CatalogEntry represents a discovered tool in the catalog
 type CatalogEntry struct {
 	Name             string    `json:"name"`                        // Binary name
 	Path             string    `json:"path"`                        // Full path to binary
 	Version          string    `json:"version,omitempty"`           // Current detected version
 	GeneratedVersion string    `json:"generated_version,omitempty"` // Version when completions were generated
+	ContentHash      string    `json:"content_hash,omitempty"`      // Hash of parsed tool content (subcommands/flags)
 	Generated        bool      `json:"generated"`                   // Whether completions have been generated
 	LastScan         time.Time `json:"last_scan"`                   // When this tool was last scanned
 	HasHelp          bool      `json:"has_help,omitempty"`          // Whether --help works

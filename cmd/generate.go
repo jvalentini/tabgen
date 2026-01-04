@@ -24,6 +24,7 @@ type toolResult struct {
 	Status           string // "success", "skipped", "failed"
 	Version          string
 	GeneratedVersion string
+	ContentHash      string // Hash of parsed tool content
 	Error            error
 	Message          string
 }
@@ -123,13 +124,14 @@ func Generate(opts GenerateOptions) error {
 			entry.Generated = true
 			entry.Version = result.Version
 			entry.GeneratedVersion = result.GeneratedVersion
+			entry.ContentHash = result.ContentHash
 			catalogUpdates[result.Name] = entry
 		case "skipped":
 			skipped++
 		case "failed":
 			fmt.Printf("  ✗ %s: %v\n", result.Name, result.Error)
 			failed++
-		case "version_changed":
+		case "version_changed", "hash_changed":
 			fmt.Printf("  ↻ %s: %s\n", result.Name, result.Message)
 			if result.Version != "" {
 				fmt.Printf("  ✓ %s (v%s)\n", result.Name, result.Version)
@@ -142,6 +144,7 @@ func Generate(opts GenerateOptions) error {
 			entry.Generated = true
 			entry.Version = result.Version
 			entry.GeneratedVersion = result.GeneratedVersion
+			entry.ContentHash = result.ContentHash
 			catalogUpdates[result.Name] = entry
 		}
 	}
@@ -192,16 +195,28 @@ func processTools(toolChan <-chan string, resultChan chan<- toolResult, catalog 
 			continue
 		}
 
-		// Check if we can skip (already generated with same version)
+		// Compute content hash for cache invalidation
+		contentHash := tool.ContentHash()
+
+		// Check if we can skip (already generated with same version AND content hash)
 		if !force && entry.Generated && entry.GeneratedVersion != "" {
-			if entry.GeneratedVersion == tool.Version {
+			versionMatch := entry.GeneratedVersion == tool.Version
+			hashMatch := entry.ContentHash != "" && entry.ContentHash == contentHash
+
+			if versionMatch && hashMatch {
 				result.Status = "skipped"
 				resultChan <- result
 				continue
 			}
-			// Version changed, will regenerate
-			result.Status = "version_changed"
-			result.Message = fmt.Sprintf("version changed (%s → %s)", entry.GeneratedVersion, tool.Version)
+
+			// Explain why we're regenerating
+			if !versionMatch {
+				result.Status = "version_changed"
+				result.Message = fmt.Sprintf("version changed (%s → %s)", entry.GeneratedVersion, tool.Version)
+			} else if !hashMatch {
+				result.Status = "hash_changed"
+				result.Message = "help output changed"
+			}
 		} else {
 			result.Status = "success"
 		}
@@ -234,6 +249,7 @@ func processTools(toolChan <-chan string, resultChan chan<- toolResult, catalog 
 
 		result.Version = tool.Version
 		result.GeneratedVersion = tool.Version
+		result.ContentHash = contentHash
 		resultChan <- result
 	}
 }

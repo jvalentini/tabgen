@@ -75,6 +75,31 @@ const MaxSubcommandDepth = 2
 
 // Parse extracts command structure from a tool
 func (p *Parser) Parse(name, path string) (*types.Tool, error) {
+	// Validate inputs
+	if name == "" {
+		return nil, errors.New("name cannot be empty")
+	}
+	if path == "" {
+		return nil, errors.New("path cannot be empty")
+	}
+
+	// Check path exists
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("path does not exist: %s", path)
+		}
+		return nil, fmt.Errorf("cannot access path %s: %w", path, err)
+	}
+
+	// Check path is executable
+	if info.IsDir() {
+		return nil, fmt.Errorf("path is a directory, not an executable: %s", path)
+	}
+	if info.Mode()&0111 == 0 {
+		return nil, fmt.Errorf("path is not executable: %s", path)
+	}
+
 	config.LogSection("Parsing " + name)
 	config.Logf("Path: %s", path)
 
@@ -494,6 +519,8 @@ func (p *Parser) parseFlagLine(line string) *types.Flag {
 	//   -f                  Description
 	//   --flag=VALUE        Description
 	//   --flag <value>      Description
+	//   --format=json|yaml  Description
+	//   --format {json,yaml} Description
 
 	if !strings.HasPrefix(trimmed, "-") {
 		return nil
@@ -516,18 +543,59 @@ func (p *Parser) parseFlagLine(line string) *types.Flag {
 		if strings.HasPrefix(token, "--") {
 			// Long flag
 			name := token
-			// Handle --flag=VALUE
+			// Handle --flag=VALUE or --flag=val1|val2
 			if idx := strings.Index(name, "="); idx > 0 {
-				flag.Arg = strings.Trim(name[idx+1:], "<>[]")
+				argPart := name[idx+1:]
 				name = name[:idx]
+
+				// Check for pipe-separated values (json|yaml|text)
+				argPart = strings.Trim(argPart, "<>[](){}")
+				if strings.Contains(argPart, "|") {
+					values := strings.Split(argPart, "|")
+					for i, v := range values {
+						values[i] = strings.TrimSpace(v)
+					}
+					flag.ArgumentValues = values
+					if len(values) > 0 {
+						flag.Arg = "value"
+					}
+				} else {
+					flag.Arg = argPart
+				}
 			}
 			flag.Name = name
 		} else if strings.HasPrefix(token, "-") && len(token) == 2 {
 			// Short flag
 			flag.Short = token
 		} else if strings.HasPrefix(token, "<") || strings.HasPrefix(token, "[") {
-			// Argument placeholder
-			flag.Arg = strings.Trim(token, "<>[]")
+			// Argument placeholder, may contain choices
+			argContent := strings.Trim(token, "<>[]")
+			if strings.Contains(argContent, "|") {
+				values := strings.Split(argContent, "|")
+				for i, v := range values {
+					values[i] = strings.TrimSpace(v)
+				}
+				flag.ArgumentValues = values
+				flag.Arg = "value"
+			} else {
+				flag.Arg = argContent
+			}
+		} else if strings.HasPrefix(token, "{") || strings.HasPrefix(token, "(") {
+			// Choices in braces: {json,yaml} or (json|yaml)
+			content := strings.Trim(token, "{}()")
+			var values []string
+			if strings.Contains(content, "|") {
+				values = strings.Split(content, "|")
+			} else if strings.Contains(content, ",") {
+				values = strings.Split(content, ",")
+			}
+			if len(values) > 0 {
+				for i, v := range values {
+					values[i] = strings.TrimSpace(v)
+				}
+				flag.ArgumentValues = values
+				flag.Arg = "value"
+			}
 		}
 	}
 
