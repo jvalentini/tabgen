@@ -3,30 +3,50 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/justin/tabgen/cmd"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("tabgen - generate tab completions from bash history")
-		fmt.Println()
-		fmt.Println("Usage: tabgen <command>")
-		fmt.Println()
-		fmt.Println("Commands:")
-		fmt.Println("  scan     Scan bash history for CLI tools")
-		fmt.Println("  generate Generate completions for a tool")
-		fmt.Println("  list     List discovered tools")
+		printUsage()
 		os.Exit(0)
 	}
 
+	var err error
 	switch os.Args[1] {
 	case "scan":
-		fmt.Println("TODO: scan bash history")
+		err = cmd.Scan()
 	case "generate":
-		fmt.Println("TODO: generate completions")
+		tool := ""
+		if len(os.Args) > 2 {
+			tool = os.Args[2]
+		}
+		err = cmd.Generate(tool)
 	case "list":
-		fmt.Println("TODO: list discovered tools")
+		showAll := len(os.Args) > 2 && os.Args[2] == "--all"
+		err = cmd.List(showAll)
+	case "help", "-h", "--help":
+		printUsage()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
 	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func printUsage() {
+	fmt.Println("tabgen - generate tab completions by analyzing CLI tools")
+	fmt.Println()
+	fmt.Println("Usage: tabgen <command> [arguments]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  scan              Scan $PATH for executable tools")
+	fmt.Println("  generate [tool]   Generate completions (all tools if none specified)")
+	fmt.Println("  list [--all]      List discovered tools (parseable only by default)")
+	fmt.Println("  help              Show this help message")
 }
