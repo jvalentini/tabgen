@@ -7,6 +7,51 @@ import (
 	"github.com/jvalentini/tabgen/internal/types"
 )
 
+func TestNewBash(t *testing.T) {
+	b := NewBash()
+	if b == nil {
+		t.Error("NewBash() returned nil")
+	}
+}
+
+func TestBash_Generate_SimpleTool_NoSubcommands(t *testing.T) {
+	b := NewBash()
+	tool := &types.Tool{Name: "simpletool"}
+
+	output := b.Generate(tool)
+
+	// Should have header
+	if !strings.Contains(output, "# Bash completion for simpletool") {
+		t.Error("missing header comment")
+	}
+
+	// No subcommands/flags, should fall back to file completion
+	if !strings.Contains(output, "compgen -f") {
+		t.Error("expected file completion fallback for tool with no subcommands/flags")
+	}
+}
+
+func TestBash_Generate_GlobalFlagsOnly(t *testing.T) {
+	b := NewBash()
+	tool := &types.Tool{
+		Name: "flagtool",
+		GlobalFlags: []types.Flag{
+			{Name: "--verbose"},
+			{Name: "--debug"},
+		},
+	}
+
+	output := b.Generate(tool)
+
+	// Should complete with flags when no subcommands
+	if !strings.Contains(output, "--verbose") {
+		t.Error("missing --verbose flag")
+	}
+	if !strings.Contains(output, "--debug") {
+		t.Error("missing --debug flag")
+	}
+}
+
 func TestBash_Generate_Basic(t *testing.T) {
 	b := NewBash()
 	tool := &types.Tool{
