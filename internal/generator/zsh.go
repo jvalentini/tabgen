@@ -15,6 +15,24 @@ func NewZsh() *Zsh {
 	return &Zsh{}
 }
 
+// GenerateWithLimits creates a zsh completion script with bounds checking
+func (z *Zsh) GenerateWithLimits(tool *types.Tool) GenerateResult {
+	// Apply truncation if needed
+	truncatedTool, warnings := truncateTool(tool)
+
+	// Generate the script
+	script := z.Generate(truncatedTool)
+
+	// Check output size
+	script, sizeWarnings := checkOutputSize(script, tool.Name)
+	warnings = append(warnings, sizeWarnings...)
+
+	return GenerateResult{
+		Script:   script,
+		Warnings: warnings,
+	}
+}
+
 // Generate creates a zsh completion script for a tool
 func (z *Zsh) Generate(tool *types.Tool) string {
 	var sb strings.Builder

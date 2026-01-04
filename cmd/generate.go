@@ -28,6 +28,7 @@ type toolResult struct {
 	ContentHash      string // Hash of parsed tool content
 	Error            error
 	Message          string
+	Warnings         []string // Truncation/bounds warnings
 }
 
 // Generate creates completion scripts for one or all tools
@@ -117,6 +118,9 @@ func Generate(opts GenerateOptions) error {
 			} else {
 				fmt.Printf("  ✓ %s\n", result.Name)
 			}
+			for _, w := range result.Warnings {
+				fmt.Printf("    ⚠ %s\n", w)
+			}
 			succeeded++
 			// Queue catalog update
 			entry := catalog.Tools[result.Name]
@@ -136,6 +140,9 @@ func Generate(opts GenerateOptions) error {
 				fmt.Printf("  ✓ %s (v%s)\n", result.Name, result.Version)
 			} else {
 				fmt.Printf("  ✓ %s\n", result.Name)
+			}
+			for _, w := range result.Warnings {
+				fmt.Printf("    ⚠ %s\n", w)
 			}
 			succeeded++
 			// Queue catalog update
@@ -226,24 +233,26 @@ func processTools(toolChan <-chan string, resultChan chan<- toolResult, catalog 
 			continue
 		}
 
-		// Generate bash completion
-		bashScript := bashGen.Generate(tool)
-		if err := storage.SaveBashCompletion(name, bashScript); err != nil {
+		// Generate bash completion with bounds checking
+		bashResult := bashGen.GenerateWithLimits(tool)
+		if err := storage.SaveBashCompletion(name, bashResult.Script); err != nil {
 			result.Status = "failed"
 			result.Error = fmt.Errorf("failed to save bash completion: %w", err)
 			resultChan <- result
 			continue
 		}
 
-		// Generate zsh completion
-		zshScript := zshGen.Generate(tool)
-		if err := storage.SaveZshCompletion(name, zshScript); err != nil {
+		// Generate zsh completion with bounds checking
+		zshResult := zshGen.GenerateWithLimits(tool)
+		if err := storage.SaveZshCompletion(name, zshResult.Script); err != nil {
 			result.Status = "failed"
 			result.Error = fmt.Errorf("failed to save zsh completion: %w", err)
 			resultChan <- result
 			continue
 		}
 
+		// Collect warnings
+		result.Warnings = append(bashResult.Warnings, zshResult.Warnings...)
 		result.Version = tool.Version
 		result.GeneratedVersion = tool.Version
 		result.ContentHash = contentHash
