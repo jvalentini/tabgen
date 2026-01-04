@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -58,11 +59,9 @@ func excludeAdd(storage *config.Storage, cfg *types.Config, pattern string) erro
 	}
 
 	// Check if already exists
-	for _, p := range cfg.Excluded {
-		if p == pattern {
-			fmt.Printf("Pattern '%s' already excluded.\n", pattern)
-			return nil
-		}
+	if slices.Contains(cfg.Excluded, pattern) {
+		fmt.Printf("Pattern '%s' already excluded.\n", pattern)
+		return nil
 	}
 
 	cfg.Excluded = append(cfg.Excluded, pattern)
