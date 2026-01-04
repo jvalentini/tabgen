@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/justin/tabgen/cmd"
+	"github.com/justin/tabgen/internal/config"
 )
 
 func main() {
@@ -14,8 +15,23 @@ func main() {
 		os.Exit(0)
 	}
 
-	command := os.Args[1]
-	args := os.Args[2:]
+	// Check for global verbose flag before parsing command
+	var filteredArgs []string
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--verbose" {
+			config.Verbose = true
+		} else {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+
+	if len(filteredArgs) == 0 {
+		printUsage()
+		os.Exit(0)
+	}
+
+	command := filteredArgs[0]
+	args := filteredArgs[1:]
 
 	var err error
 	switch command {
@@ -114,7 +130,10 @@ func main() {
 func printUsage() {
 	fmt.Println("tabgen - generate tab completions by analyzing CLI tools")
 	fmt.Println()
-	fmt.Println("Usage: tabgen <command> [arguments]")
+	fmt.Println("Usage: tabgen [options] <command> [arguments]")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  -v, --verbose           Show detailed parsing and debug output")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  scan                    Scan $PATH for executable tools")
