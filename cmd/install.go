@@ -159,9 +159,17 @@ WantedBy=timers.target
 	}
 
 	// Enable and start the timer
-	exec.Command("systemctl", "--user", "daemon-reload").Run()
-	exec.Command("systemctl", "--user", "enable", "tabgen-scan.timer").Run()
-	exec.Command("systemctl", "--user", "start", "tabgen-scan.timer").Run()
+	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
+		return fmt.Errorf("failed to reload systemd user daemon: %w", err)
+	}
+
+	if err := exec.Command("systemctl", "--user", "enable", "tabgen-scan.timer").Run(); err != nil {
+		return fmt.Errorf("failed to enable tabgen-scan.timer: %w", err)
+	}
+
+	if err := exec.Command("systemctl", "--user", "start", "tabgen-scan.timer").Run(); err != nil {
+		return fmt.Errorf("failed to start tabgen-scan.timer: %w", err)
+	}
 
 	fmt.Println("  ✓ Systemd timer installed (daily scan)")
 	return nil
