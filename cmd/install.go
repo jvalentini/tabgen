@@ -98,11 +98,11 @@ func createSymlink(src, dest string) error {
 func installTimer(storage *config.Storage, home string) error {
 	// Check if systemd user instance is available
 	if hasSystemdUser() {
-		return installSystemdTimer(storage, home)
+		return installSystemdTimer(home)
 	}
 
 	// Fall back to cron
-	return installCron(storage)
+	return installCron()
 }
 
 // hasSystemdUser checks if systemd user instance is available
@@ -116,7 +116,7 @@ func hasSystemdUser() bool {
 }
 
 // installSystemdTimer installs a systemd user timer
-func installSystemdTimer(storage *config.Storage, home string) error {
+func installSystemdTimer(home string) error {
 	userDir := filepath.Join(home, ".config", "systemd", "user")
 	if err := os.MkdirAll(userDir, 0755); err != nil {
 		return err
@@ -176,7 +176,7 @@ WantedBy=timers.target
 }
 
 // installCron adds a cron job for daily scanning
-func installCron(storage *config.Storage) error {
+func installCron() error {
 	tabgenPath, err := os.Executable()
 	if err != nil {
 		tabgenPath = "tabgen"
