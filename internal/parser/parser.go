@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/justin/tabgen/internal/config"
 	"github.com/justin/tabgen/internal/types"
 )
 
@@ -74,6 +75,9 @@ const MaxSubcommandDepth = 2
 
 // Parse extracts command structure from a tool
 func (p *Parser) Parse(name, path string) (*types.Tool, error) {
+	config.LogSection("Parsing " + name)
+	config.Logf("Path: %s", path)
+
 	tool := &types.Tool{
 		Name:     name,
 		Path:     path,
@@ -82,10 +86,17 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 
 	// Detect version
 	tool.Version = DetectVersion(path)
+	if tool.Version != "" {
+		config.Logf("Detected version: %s", tool.Version)
+	} else {
+		config.Logf("No version detected")
+	}
 
 	// Try --help first
+	config.Logf("Running: %s --help", path)
 	helpOutput, helpErr := p.runHelp(path)
 	if helpErr != nil {
+		config.Logf("--help error: %v", helpErr)
 		// Distinguish permission errors from "no help available"
 		if isPermissionError(helpErr) {
 			return nil, fmt.Errorf("cannot run %s --help: %w", path, helpErr)
@@ -93,21 +104,35 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 		// Other errors (e.g., tool has no help) are acceptable, continue
 	}
 
+	if helpOutput != "" {
+		config.Logf("--help output: %d bytes", len(helpOutput))
+		config.LogSnippet("--help output", helpOutput, 20)
+	} else {
+		config.Logf("--help returned no output")
+	}
+
 	// Try man page as fallback or supplement
+	config.Logf("Checking man page for: %s", name)
 	manOutput, manErr := p.getManPage(name)
 	if manErr != nil {
+		config.Logf("man page error: %v", manErr)
 		// Permission errors on man page are less critical but worth noting
 		if isPermissionError(manErr) {
 			// Log but don't fail - man pages are optional
 			tool.Source = "help-only"
 		}
 		// Other errors (no man page) are acceptable
+	} else if manOutput != "" {
+		config.Logf("man page output: %d bytes", len(manOutput))
 	}
 
 	// Parse what we got
 	if helpOutput != "" {
 		tool.Source = "help"
+		config.Logf("Parsing --help output...")
 		p.parseHelpOutput(tool, helpOutput)
+		config.Logf("Found %d subcommands, %d global flags from --help",
+			len(tool.Subcommands), len(tool.GlobalFlags))
 	}
 
 	if manOutput != "" {
@@ -116,15 +141,24 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 		} else {
 			tool.Source = "both"
 		}
+		config.Logf("Parsing man page...")
 		p.parseManPage(tool, manOutput)
+		config.Logf("Total flags after man page: %d", len(tool.GlobalFlags))
 	}
 
 	if tool.Source == "" {
 		tool.Source = "none"
+		config.Logf("No help or man page found - tool unparseable")
 	}
 
 	// Parse nested subcommands (depth-limited)
-	p.parseNestedSubcommands(path, tool.Subcommands, 1)
+	if len(tool.Subcommands) > 0 {
+		config.Logf("Parsing nested subcommands (max depth: %d)...", MaxSubcommandDepth)
+		p.parseNestedSubcommands(path, tool.Subcommands, 1)
+	}
+
+	config.Logf("Parse complete: source=%s, subcommands=%d, flags=%d",
+		tool.Source, len(tool.Subcommands), len(tool.GlobalFlags))
 
 	return tool, nil
 }
@@ -286,6 +320,7 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 			strings.HasPrefix(lower, "available commands:") ||
 			strings.HasPrefix(lower, "subcommands:") ||
 			lower == "commands" {
+			config.Logf("Detected COMMANDS section: %q", trimmed)
 			inCommands = true
 			inOptions = false
 			continue
@@ -296,6 +331,7 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 			strings.HasPrefix(lower, "global options:") ||
 			strings.HasPrefix(lower, "global flags:") ||
 			lower == "options" || lower == "flags" {
+			config.Logf("Detected OPTIONS section: %q", trimmed)
 			inCommands = false
 			inOptions = true
 			continue
