@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/justin/tabgen/internal/types"
 )
+
+// HelpTimeout is the maximum time to wait for help command execution
+const HelpTimeout = 5 * time.Second
 
 // Parser extracts command structure from --help and man pages
 type Parser struct{}
@@ -107,16 +111,19 @@ func (p *Parser) parseNestedSubcommands(basePath string, commands []types.Comman
 
 // runSubcommandHelp runs "tool subcommand --help"
 func (p *Parser) runSubcommandHelp(basePath, subcommand string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	defer cancel()
+
 	// Split base path in case it contains spaces (nested commands)
 	parts := strings.Fields(basePath)
 	args := append(parts[1:], subcommand, "--help")
 
-	cmd := exec.Command(parts[0], args...)
+	cmd := exec.CommandContext(ctx, parts[0], args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil && len(output) == 0 {
 		// Try without --help (some tools use "help subcommand")
 		args = append(parts[1:], "help", subcommand)
-		cmd = exec.Command(parts[0], args...)
+		cmd = exec.CommandContext(ctx, parts[0], args...)
 		output, _ = cmd.CombinedOutput()
 	}
 	return string(output)
@@ -197,7 +204,10 @@ func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
 
 // runHelp executes tool --help and captures output
 func (p *Parser) runHelp(path string) (string, error) {
-	cmd := exec.Command(path, "--help")
+	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "--help")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Many tools return non-zero for --help, still use output
@@ -205,7 +215,7 @@ func (p *Parser) runHelp(path string) (string, error) {
 			return string(output), nil
 		}
 		// Try -h as fallback
-		cmd = exec.Command(path, "-h")
+		cmd = exec.CommandContext(ctx, path, "-h")
 		output, _ = cmd.CombinedOutput()
 	}
 	return string(output), nil
@@ -213,7 +223,10 @@ func (p *Parser) runHelp(path string) (string, error) {
 
 // getManPage retrieves the man page content
 func (p *Parser) getManPage(name string) (string, error) {
-	cmd := exec.Command("man", name)
+	ctx, cancel := context.WithTimeout(context.Background(), HelpTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "man", name)
 	cmd.Env = []string{"MANWIDTH=120", "LC_ALL=C"}
 	output, err := cmd.Output()
 	if err != nil {
