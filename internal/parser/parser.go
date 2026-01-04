@@ -1,6 +1,9 @@
 package parser
 
 import (
+	"errors"
+	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,10 +34,25 @@ func (p *Parser) Parse(name, path string) (*types.Tool, error) {
 	tool.Version = DetectVersion(path)
 
 	// Try --help first
-	helpOutput, _ := p.runHelp(path)
+	helpOutput, helpErr := p.runHelp(path)
+	if helpErr != nil {
+		// Distinguish permission errors from "no help available"
+		if isPermissionError(helpErr) {
+			return nil, fmt.Errorf("cannot run %s --help: %w", path, helpErr)
+		}
+		// Other errors (e.g., tool has no help) are acceptable, continue
+	}
 
 	// Try man page as fallback or supplement
-	manOutput, _ := p.getManPage(name)
+	manOutput, manErr := p.getManPage(name)
+	if manErr != nil {
+		// Permission errors on man page are less critical but worth noting
+		if isPermissionError(manErr) {
+			// Log but don't fail - man pages are optional
+			tool.Source = "help-only"
+		}
+		// Other errors (no man page) are acceptable
+	}
 
 	// Parse what we got
 	if helpOutput != "" {
@@ -516,4 +534,24 @@ func isManSectionHeader(s string) bool {
 		}
 	}
 	return false
+}
+
+// isPermissionError checks if an error is a permission-related error
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for os.ErrPermission
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+	// Check for exec errors that indicate permission issues
+	if errors.Is(err, exec.ErrNotFound) {
+		return false // Not found is not a permission error
+	}
+	// Check error message for common permission indicators
+	errStr := err.Error()
+	return strings.Contains(errStr, "permission denied") ||
+		strings.Contains(errStr, "EACCES") ||
+		strings.Contains(errStr, "operation not permitted")
 }
