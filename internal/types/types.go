@@ -4,11 +4,12 @@ import "time"
 
 // Flag represents a command-line flag/option
 type Flag struct {
-	Name        string `json:"name"`                  // Long form, e.g., "--output"
-	Short       string `json:"short,omitempty"`       // Short form, e.g., "-o"
-	Arg         string `json:"arg,omitempty"`         // Argument name, e.g., "format"
-	Description string `json:"description,omitempty"` // Help text
-	Required    bool   `json:"required,omitempty"`    // Whether the flag is required
+	Name           string   `json:"name"`                     // Long form, e.g., "--output"
+	Short          string   `json:"short,omitempty"`          // Short form, e.g., "-o"
+	Arg            string   `json:"arg,omitempty"`            // Argument name, e.g., "format"
+	ArgumentValues []string `json:"argument_values,omitempty"` // Allowed values, e.g., ["json", "yaml"]
+	Description    string   `json:"description,omitempty"`    // Help text
+	Required       bool     `json:"required,omitempty"`       // Whether the flag is required
 }
 
 // Command represents a command or subcommand

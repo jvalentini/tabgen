@@ -591,12 +591,6 @@ func TestParseFlagLine_EdgeCases(t *testing.T) {
 		wantArg  string
 	}{
 		{
-			name:     "flag with bracket arg",
-			line:     "  --format [json|yaml]   Output format",
-			wantName: "--format",
-			wantArg:  "json|yaml",
-		},
-		{
 			name:     "flag multiple spaces before desc",
 			line:     "  --long               Very long description here",
 			wantName: "--long",
@@ -615,6 +609,88 @@ func TestParseFlagLine_EdgeCases(t *testing.T) {
 			}
 			if tt.wantArg != "" && flag.Arg != tt.wantArg {
 				t.Errorf("arg: got %q, want %q", flag.Arg, tt.wantArg)
+			}
+		})
+	}
+}
+
+func TestParseFlagLine_ArgumentValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		line          string
+		wantName      string
+		wantArg       string
+		wantArgValues []string
+	}{
+		{
+			name:          "pipe-separated in equals",
+			line:          "  --format=json|yaml|text   Output format",
+			wantName:      "--format",
+			wantArg:       "value",
+			wantArgValues: []string{"json", "yaml", "text"},
+		},
+		{
+			name:          "pipe-separated in brackets",
+			line:          "  --output [json|xml]   Output type",
+			wantName:      "--output",
+			wantArg:       "value",
+			wantArgValues: []string{"json", "xml"},
+		},
+		{
+			name:          "comma-separated in braces",
+			line:          "  --level {debug,info,warn,error}   Log level",
+			wantName:      "--level",
+			wantArg:       "value",
+			wantArgValues: []string{"debug", "info", "warn", "error"},
+		},
+		{
+			name:          "pipe-separated in parens",
+			line:          "  --shell (bash|zsh|fish)   Shell type",
+			wantName:      "--shell",
+			wantArg:       "value",
+			wantArgValues: []string{"bash", "zsh", "fish"},
+		},
+		{
+			name:          "pipe-separated in angle brackets",
+			line:          "  --type <a|b|c>   Type selection",
+			wantName:      "--type",
+			wantArg:       "value",
+			wantArgValues: []string{"a", "b", "c"},
+		},
+		{
+			name:          "regular arg without choices",
+			line:          "  --config <file>   Config file",
+			wantName:      "--config",
+			wantArg:       "file",
+			wantArgValues: nil,
+		},
+	}
+
+	p := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag := p.parseFlagLine(tt.line)
+			if flag == nil {
+				t.Fatal("expected flag, got nil")
+			}
+			if flag.Name != tt.wantName {
+				t.Errorf("name: got %q, want %q", flag.Name, tt.wantName)
+			}
+			if flag.Arg != tt.wantArg {
+				t.Errorf("arg: got %q, want %q", flag.Arg, tt.wantArg)
+			}
+			if len(tt.wantArgValues) > 0 {
+				if len(flag.ArgumentValues) != len(tt.wantArgValues) {
+					t.Errorf("argument values length: got %d, want %d", len(flag.ArgumentValues), len(tt.wantArgValues))
+				} else {
+					for i, v := range tt.wantArgValues {
+						if flag.ArgumentValues[i] != v {
+							t.Errorf("argument value[%d]: got %q, want %q", i, flag.ArgumentValues[i], v)
+						}
+					}
+				}
+			} else if len(flag.ArgumentValues) > 0 {
+				t.Errorf("expected no argument values, got %v", flag.ArgumentValues)
 			}
 		})
 	}
