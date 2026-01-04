@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -13,45 +14,94 @@ func main() {
 		os.Exit(0)
 	}
 
+	command := os.Args[1]
+	args := os.Args[2:]
+
 	var err error
-	switch os.Args[1] {
+	switch command {
 	case "scan":
 		err = cmd.Scan()
+
 	case "generate":
-		opts := cmd.GenerateOptions{}
-		for _, arg := range os.Args[2:] {
-			if arg == "--force" || arg == "-f" {
-				opts.Force = true
-			} else if len(arg) > 0 && arg[0] != '-' {
-				opts.Tool = arg
-			}
+		fs := flag.NewFlagSet("generate", flag.ExitOnError)
+		force := fs.Bool("force", false, "force regeneration")
+		fs.BoolVar(force, "f", false, "force regeneration (shorthand)")
+		fs.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: tabgen generate [tool] [-f|--force]")
+			fs.PrintDefaults()
+		}
+		if err := fs.Parse(args); err != nil {
+			os.Exit(1)
+		}
+		opts := cmd.GenerateOptions{Force: *force}
+		if fs.NArg() > 0 {
+			opts.Tool = fs.Arg(0)
 		}
 		err = cmd.Generate(opts)
+
 	case "list":
-		showAll := len(os.Args) > 2 && os.Args[2] == "--all"
-		err = cmd.List(showAll)
+		fs := flag.NewFlagSet("list", flag.ExitOnError)
+		showAll := fs.Bool("all", false, "show all tools")
+		fs.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: tabgen list [--all]")
+			fs.PrintDefaults()
+		}
+		if err := fs.Parse(args); err != nil {
+			os.Exit(1)
+		}
+		err = cmd.List(*showAll)
+
 	case "install":
-		skipTimer := len(os.Args) > 2 && os.Args[2] == "--skip-timer"
-		err = cmd.Install(skipTimer)
+		fs := flag.NewFlagSet("install", flag.ExitOnError)
+		skipTimer := fs.Bool("skip-timer", false, "skip systemd timer setup")
+		fs.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: tabgen install [--skip-timer]")
+			fs.PrintDefaults()
+		}
+		if err := fs.Parse(args); err != nil {
+			os.Exit(1)
+		}
+		err = cmd.Install(*skipTimer)
+
 	case "uninstall":
-		keepData := len(os.Args) > 2 && os.Args[2] == "--keep-data"
-		err = cmd.Uninstall(keepData)
+		fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
+		keepData := fs.Bool("keep-data", false, "keep data directory")
+		fs.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: tabgen uninstall [--keep-data]")
+			fs.PrintDefaults()
+		}
+		if err := fs.Parse(args); err != nil {
+			os.Exit(1)
+		}
+		err = cmd.Uninstall(*keepData)
+
 	case "status":
 		err = cmd.Status()
+
 	case "exclude":
+		fs := flag.NewFlagSet("exclude", flag.ExitOnError)
+		fs.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: tabgen exclude <action> [pattern]")
+			fmt.Fprintln(os.Stderr, "Actions: list, add, remove, clear")
+		}
+		if err := fs.Parse(args); err != nil {
+			os.Exit(1)
+		}
 		action := ""
 		pattern := ""
-		if len(os.Args) > 2 {
-			action = os.Args[2]
+		if fs.NArg() > 0 {
+			action = fs.Arg(0)
 		}
-		if len(os.Args) > 3 {
-			pattern = os.Args[3]
+		if fs.NArg() > 1 {
+			pattern = fs.Arg(1)
 		}
 		err = cmd.Exclude(action, pattern)
+
 	case "help", "-h", "--help":
 		printUsage()
+
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", command)
 		os.Exit(1)
 	}
 
