@@ -11,3 +11,8 @@ tabgen
 # IDE
 .idea/
 .vscode/
+
+# Local state
+.beads/
+.claude/
+.runtime/
