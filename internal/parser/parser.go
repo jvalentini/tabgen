@@ -24,50 +24,41 @@ func New() *Parser {
 	return &Parser{}
 }
 
-// flagSet provides O(n) duplicate detection for flags using a map
-type flagSet struct {
+// UniqueSet provides O(1) duplicate detection for any slice type
+type UniqueSet[T any] struct {
 	seen  map[string]bool
-	flags *[]types.Flag
+	items *[]T
+	key   func(T) string
 }
 
-// newFlagSet creates a flagSet wrapping an existing slice
-func newFlagSet(flags *[]types.Flag) *flagSet {
-	seen := make(map[string]bool, len(*flags))
-	for _, f := range *flags {
-		seen[f.Name] = true
+// NewUniqueSet creates a UniqueSet wrapping an existing slice
+func NewUniqueSet[T any](items *[]T, key func(T) string) *UniqueSet[T] {
+	seen := make(map[string]bool, len(*items))
+	for _, item := range *items {
+		seen[key(item)] = true
 	}
-	return &flagSet{seen: seen, flags: flags}
+	return &UniqueSet[T]{seen: seen, items: items, key: key}
 }
 
-// add appends flag if not already present (O(1) lookup)
-func (fs *flagSet) add(flag types.Flag) {
-	if !fs.seen[flag.Name] {
-		fs.seen[flag.Name] = true
-		*fs.flags = append(*fs.flags, flag)
+// Add appends item if not already present (O(1) lookup), returns true if added
+func (s *UniqueSet[T]) Add(item T) bool {
+	k := s.key(item)
+	if s.seen[k] {
+		return false
 	}
+	s.seen[k] = true
+	*s.items = append(*s.items, item)
+	return true
 }
 
-// commandSet provides O(n) duplicate detection for commands using a map
-type commandSet struct {
-	seen     map[string]bool
-	commands *[]types.Command
+// newFlagSet creates a UniqueSet for flags
+func newFlagSet(flags *[]types.Flag) *UniqueSet[types.Flag] {
+	return NewUniqueSet(flags, func(f types.Flag) string { return f.Name })
 }
 
-// newCommandSet creates a commandSet wrapping an existing slice
-func newCommandSet(commands *[]types.Command) *commandSet {
-	seen := make(map[string]bool, len(*commands))
-	for _, c := range *commands {
-		seen[c.Name] = true
-	}
-	return &commandSet{seen: seen, commands: commands}
-}
-
-// add appends command if not already present (O(1) lookup)
-func (cs *commandSet) add(cmd types.Command) {
-	if !cs.seen[cmd.Name] {
-		cs.seen[cmd.Name] = true
-		*cs.commands = append(*cs.commands, cmd)
-	}
+// newCommandSet creates a UniqueSet for commands
+func newCommandSet(commands *[]types.Command) *UniqueSet[types.Command] {
+	return NewUniqueSet(commands, func(c types.Command) string { return c.Name })
 }
 
 // MaxSubcommandDepth limits how deep we recurse into subcommands
@@ -272,21 +263,21 @@ func (p *Parser) parseSubcommandOutput(cmd *types.Command, output string) {
 		// Parse nested subcommands
 		if inCommands {
 			if subcmd := p.parseCommandLine(line); subcmd != nil {
-				cmdSet.add(*subcmd)
+				cmdSet.Add(*subcmd)
 			}
 		}
 
 		// Parse flags
 		if inOptions || strings.HasPrefix(trimmed, "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
-				flagSet.add(*flag)
+				flagSet.Add(*flag)
 			}
 		}
 
 		// Look for indented commands (git-style)
 		if !inCommands && !inOptions && len(line) > 3 && (line[0] == ' ' || line[0] == '\t') {
 			if subcmd := p.parseIndentedCommand(line); subcmd != nil {
-				cmdSet.add(*subcmd)
+				cmdSet.Add(*subcmd)
 			}
 		}
 	}
@@ -370,21 +361,21 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 		// Parse commands
 		if inCommands {
 			if cmd := p.parseCommandLine(line); cmd != nil {
-				cmdSet.add(*cmd)
+				cmdSet.Add(*cmd)
 			}
 		}
 
 		// Parse options/flags
 		if inOptions {
 			if flag := p.parseFlagLine(line); flag != nil {
-				flagSet.add(*flag)
+				flagSet.Add(*flag)
 			}
 		}
 
 		// Also look for inline flags anywhere (lines starting with -)
 		if !inOptions && strings.HasPrefix(strings.TrimSpace(line), "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
-				flagSet.add(*flag)
+				flagSet.Add(*flag)
 			}
 		}
 
@@ -392,7 +383,7 @@ func (p *Parser) parseHelpOutput(tool *types.Tool, output string) {
 		// Pattern: "   clone     Clone a repository..."
 		if !inCommands && !inOptions && len(line) > 3 && (line[0] == ' ' || line[0] == '\t') {
 			if cmd := p.parseIndentedCommand(line); cmd != nil {
-				cmdSet.add(*cmd)
+				cmdSet.Add(*cmd)
 			}
 		}
 	}
@@ -648,7 +639,7 @@ func (p *Parser) parseManPage(tool *types.Tool, output string) {
 		if strings.HasPrefix(trimmed, "-") {
 			if flag := p.parseFlagLine(line); flag != nil {
 				prevLen := len(tool.GlobalFlags)
-				flagSet.add(*flag)
+				flagSet.Add(*flag)
 				if len(tool.GlobalFlags) > prevLen {
 					currentFlag = &tool.GlobalFlags[len(tool.GlobalFlags)-1]
 				}
