@@ -9,7 +9,7 @@ TabGen scans your system for executable tools, parses their help documentation, 
 ## Installation
 
 ```bash
-go install github.com/justin/tabgen@latest
+go install github.com/jvalentini/tabgen@latest
 ```
 
 ## Quick Start
