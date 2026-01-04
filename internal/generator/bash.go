@@ -32,7 +32,7 @@ func (b *Bash) Generate(tool *types.Tool) string {
 	if len(tool.Subcommands) > 0 {
 		cmds := make([]string, len(tool.Subcommands))
 		for i, cmd := range tool.Subcommands {
-			cmds[i] = cmd.Name
+			cmds[i] = escapeShellString(cmd.Name)
 		}
 		sb.WriteString(fmt.Sprintf("    local commands=\"%s\"\n", strings.Join(cmds, " ")))
 	}
@@ -86,7 +86,7 @@ func (b *Bash) Generate(tool *types.Tool) string {
 	sb.WriteString("}\n\n")
 
 	// Register completion with fallback behavior (side-by-side)
-	sb.WriteString(fmt.Sprintf("complete -o default -o bashdefault -F %s %s\n", funcName, tool.Name))
+	sb.WriteString(fmt.Sprintf("complete -o default -o bashdefault -F %s %s\n", funcName, escapeShellString(tool.Name)))
 
 	return sb.String()
 }
@@ -95,20 +95,20 @@ func (b *Bash) Generate(tool *types.Tool) string {
 func (b *Bash) generateSubcommandCase(sb *strings.Builder, cmd types.Command, indent int) {
 	prefix := strings.Repeat("    ", indent)
 
-	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, cmd.Name))
+	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, escapeCasePattern(cmd.Name)))
 
 	// If this command has nested subcommands, handle them
 	if len(cmd.Subcommands) > 0 {
 		subcmds := make([]string, len(cmd.Subcommands))
 		for i, sub := range cmd.Subcommands {
-			subcmds[i] = sub.Name
+			subcmds[i] = escapeShellString(sub.Name)
 		}
 
 		sb.WriteString(fmt.Sprintf("%s    case \"$subcmd\" in\n", prefix))
 		for _, sub := range cmd.Subcommands {
 			if len(sub.Flags) > 0 {
 				subFlags := collectFlags(sub.Flags)
-				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, sub.Name))
+				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, escapeCasePattern(sub.Name)))
 				sb.WriteString(fmt.Sprintf("%s            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", prefix, strings.Join(subFlags, " ")))
 				sb.WriteString(fmt.Sprintf("%s            return\n", prefix))
 				sb.WriteString(fmt.Sprintf("%s            ;;\n", prefix))
@@ -140,13 +140,38 @@ func collectFlags(flags []types.Flag) []string {
 	result := make([]string, 0, len(flags)*2)
 	for _, flag := range flags {
 		if flag.Name != "" {
-			result = append(result, flag.Name)
+			result = append(result, escapeShellString(flag.Name))
 		}
 		if flag.Short != "" {
-			result = append(result, flag.Short)
+			result = append(result, escapeShellString(flag.Short))
 		}
 	}
 	return result
+}
+
+// escapeShellString escapes characters special in double-quoted bash strings
+func escapeShellString(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`$`, `\$`,
+		`"`, `\"`,
+		"`", "\\`",
+	)
+	return replacer.Replace(s)
+}
+
+// escapeCasePattern escapes characters special in bash case patterns
+func escapeCasePattern(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`*`, `\*`,
+		`?`, `\?`,
+		`[`, `\[`,
+		`]`, `\]`,
+		`|`, `\|`,
+		`)`, `\)`,
+	)
+	return replacer.Replace(s)
 }
 
 // bashFuncName creates a valid bash function name from a tool name
