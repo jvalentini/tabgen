@@ -32,8 +32,10 @@ func (b *Bash) Generate(tool *types.Tool) string {
 	if len(tool.Subcommands) > 0 {
 		var cmds []string
 		for _, cmd := range tool.Subcommands {
-			cmds = append(cmds, cmd.Name)
-			cmds = append(cmds, cmd.Aliases...)
+			cmds = append(cmds, escapeShellString(cmd.Name))
+			for _, alias := range cmd.Aliases {
+				cmds = append(cmds, escapeShellString(alias))
+			}
 		}
 		sb.WriteString(fmt.Sprintf("    local commands=\"%s\"\n", strings.Join(cmds, " ")))
 	}
@@ -90,7 +92,7 @@ func (b *Bash) Generate(tool *types.Tool) string {
 	sb.WriteString("}\n\n")
 
 	// Register completion with fallback behavior (side-by-side)
-	sb.WriteString(fmt.Sprintf("complete -o default -o bashdefault -F %s %s\n", funcName, tool.Name))
+	sb.WriteString(fmt.Sprintf("complete -o default -o bashdefault -F %s %s\n", funcName, escapeShellString(tool.Name)))
 
 	return sb.String()
 }
@@ -100,31 +102,24 @@ func (b *Bash) generateSubcommandCase(sb *strings.Builder, cmd types.Command, in
 	prefix := strings.Repeat("    ", indent)
 
 	// Build pattern matching name and aliases (e.g., "build|b")
-	pattern := cmd.Name
-	if len(cmd.Aliases) > 0 {
-		pattern = cmd.Name + "|" + strings.Join(cmd.Aliases, "|")
-	}
-	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, pattern))
+	sb.WriteString(fmt.Sprintf("%s%s)\n", prefix, buildCasePattern(cmd.Name, cmd.Aliases)))
 
 	// If this command has nested subcommands, handle them
 	if len(cmd.Subcommands) > 0 {
 		// Include aliases in the subcommand list
 		var subcmds []string
 		for _, sub := range cmd.Subcommands {
-			subcmds = append(subcmds, sub.Name)
-			subcmds = append(subcmds, sub.Aliases...)
+			subcmds = append(subcmds, escapeShellString(sub.Name))
+			for _, alias := range sub.Aliases {
+				subcmds = append(subcmds, escapeShellString(alias))
+			}
 		}
 
 		sb.WriteString(fmt.Sprintf("%s    case \"$subcmd\" in\n", prefix))
 		for _, sub := range cmd.Subcommands {
 			if len(sub.Flags) > 0 {
 				subFlags := collectFlags(sub.Flags)
-				// Build pattern matching name and aliases
-				subPattern := sub.Name
-				if len(sub.Aliases) > 0 {
-					subPattern = sub.Name + "|" + strings.Join(sub.Aliases, "|")
-				}
-				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, subPattern))
+				sb.WriteString(fmt.Sprintf("%s        %s)\n", prefix, buildCasePattern(sub.Name, sub.Aliases)))
 				sb.WriteString(fmt.Sprintf("%s            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", prefix, strings.Join(subFlags, " ")))
 				sb.WriteString(fmt.Sprintf("%s            return\n", prefix))
 				sb.WriteString(fmt.Sprintf("%s            ;;\n", prefix))
@@ -156,13 +151,47 @@ func collectFlags(flags []types.Flag) []string {
 	result := make([]string, 0, len(flags)*2)
 	for _, flag := range flags {
 		if flag.Name != "" {
-			result = append(result, flag.Name)
+			result = append(result, escapeShellString(flag.Name))
 		}
 		if flag.Short != "" {
-			result = append(result, flag.Short)
+			result = append(result, escapeShellString(flag.Short))
 		}
 	}
 	return result
+}
+
+// escapeShellString escapes characters special in double-quoted bash strings
+func escapeShellString(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`$`, `\$`,
+		`"`, `\"`,
+		"`", "\\`",
+	)
+	return replacer.Replace(s)
+}
+
+// escapeCasePattern escapes characters special in bash case patterns
+func escapeCasePattern(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`*`, `\*`,
+		`?`, `\?`,
+		`[`, `\[`,
+		`]`, `\]`,
+		`)`, `\)`,
+	)
+	return replacer.Replace(s)
+}
+
+// buildCasePattern creates a case pattern from name and aliases with proper escaping
+func buildCasePattern(name string, aliases []string) string {
+	parts := make([]string, 0, 1+len(aliases))
+	parts = append(parts, escapeCasePattern(name))
+	for _, alias := range aliases {
+		parts = append(parts, escapeCasePattern(alias))
+	}
+	return strings.Join(parts, "|")
 }
 
 // bashFuncName creates a valid bash function name from a tool name
@@ -229,9 +258,15 @@ func (b *Bash) generateFlagValueCompletions(sb *strings.Builder, globalFlags []t
 	}
 
 	for values, flags := range valueGroups {
-		pattern := strings.Join(flags, "|")
+		// Escape each flag name for case pattern
+		escapedFlags := make([]string, len(flags))
+		for i, f := range flags {
+			escapedFlags[i] = escapeCasePattern(f)
+		}
+		pattern := strings.Join(escapedFlags, "|")
 		sb.WriteString(fmt.Sprintf("        %s)\n", pattern))
-		sb.WriteString(fmt.Sprintf("            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", values))
+		// Escape values for double-quoted string
+		sb.WriteString(fmt.Sprintf("            COMPREPLY=($(compgen -W \"%s\" -- \"$cur\"))\n", escapeShellString(values)))
 		sb.WriteString("            return\n")
 		sb.WriteString("            ;;\n")
 	}
