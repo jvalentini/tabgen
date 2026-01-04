@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"maps"
 	"runtime"
 	"sync"
 
@@ -148,9 +149,7 @@ func Generate(opts GenerateOptions) error {
 	}
 
 	// Apply catalog updates
-	for name, entry := range catalogUpdates {
-		catalog.Tools[name] = entry
-	}
+	maps.Copy(catalog.Tools, catalogUpdates)
 
 	// Save updated catalog
 	if err := storage.SaveCatalog(catalog); err != nil {
